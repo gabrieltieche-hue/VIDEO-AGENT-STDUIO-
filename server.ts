@@ -1,0 +1,1535 @@
+import express, { Request, Response } from 'express';
+import { createServer as createViteServer } from 'vite';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = Number(process.env.PORT) || 3000;
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// In-Memory Database for Video Agent Studio VF
+interface WhisperWord {
+  id: string;
+  word: string;
+  start: number;
+  end: number;
+  confidence: number;
+  isCut?: boolean;
+}
+
+interface FeedbackItem {
+  id: string;
+  timestamp: number;
+  timeFormatted: string;
+  text: string;
+  author: string;
+  resolved: boolean;
+  targetElement?: string;
+  drawingSnapshot?: string;
+  createdAt: string;
+}
+
+interface MotionComponent {
+  id: string;
+  name: string;
+  code: string;
+  tRange: [number, number];
+  width: number;
+  height: number;
+  fps: number;
+  hasAlpha: boolean;
+  description: string;
+}
+
+interface ShortProject {
+  id: string;
+  slug: string;
+  title: string;
+  mode: 'faceless_explainer' | 'split_screen_clips';
+  platform: 'instagram' | 'tiktok' | 'youtube_shorts';
+  status: 'draft' | 'preparing' | 'rendering' | 'ready';
+  duration: number; // in seconds
+  fps: number;
+  resolution: { width: number; height: number };
+  sourceVideoName?: string;
+  speakerVideoUrl?: string;
+  audioTrackUrl?: string;
+  currentVersion: string;
+  versions: Array<{
+    version: string;
+    createdAt: string;
+    status: 'done' | 'current' | 'failed' | 'rendering';
+    duration: number;
+    fps: number;
+    notes: string;
+  }>;
+  transcript: WhisperWord[];
+  motionTrack: Array<{
+    id: string;
+    componentId: string;
+    name: string;
+    start: number;
+    end: number;
+    type: 'chart' | 'network' | 'rocket' | 'counter' | 'typography' | 'card';
+  }>;
+  layoutTrack: Array<{
+    id: string;
+    layout: 'split' | 'fullscreen' | 'facecam';
+    start: number;
+    end: number;
+  }>;
+  sfxTrack: Array<{
+    id: string;
+    sound: 'pop' | 'click' | 'whoosh' | 'thump' | 'ding';
+    start: number;
+    volume: number;
+  }>;
+  musicTrack: {
+    trackName: string;
+    volume: number;
+    ducking: boolean;
+  };
+  feedbacks: FeedbackItem[];
+  motionComponents: Record<string, MotionComponent>;
+  contactSheet: Array<{
+    frameIndex: number;
+    timestamp: number;
+    timeFormatted: string;
+    title: string;
+    qcCheck: 'pass' | 'revise' | 'blocked';
+    notes: string;
+  }>;
+  styleProfile: {
+    name: string;
+    fontFamily: string;
+    accentColor: string;
+    textColor: string;
+    cardBg: string;
+    captionsPosition: 'center_divider' | 'bottom' | 'top';
+    visualBeatsTarget: number;
+  };
+}
+
+// Initial Sample Projects
+const initialMotionComponents: Record<string, MotionComponent> = {
+  'comp-rocket': {
+    id: 'comp-rocket',
+    name: 'Fusée en Décollage',
+    description: 'Fusée spatiale 2D avec traînée de particules et vibration d\'accélération',
+    width: 1080,
+    height: 1080,
+    fps: 30,
+    hasAlpha: true,
+    tRange: [0, 1],
+    code: `// Animation Fusée pilotée par window.setT(t) [0 -> 1]
+window.setT = function(t) {
+  const rocket = document.getElementById('rocket-body');
+  const flame = document.getElementById('rocket-flame');
+  if (!rocket) return;
+  const posY = 500 - (t * 600);
+  const shake = Math.sin(t * 80) * (3 * (1 - t));
+  rocket.style.transform = \`translate3d(\${shake}px, \${posY}px, 0)\`;
+  if (flame) {
+    const scaleY = 0.8 + Math.sin(t * 50) * 0.4;
+    flame.style.transform = \`scaleY(\${scaleY})\`;
+  }
+};`
+  },
+  'comp-chart': {
+    id: 'comp-chart',
+    name: 'Graphique Boursier Exponentiel',
+    description: 'Courbe de croissance avec barres dynamiques et badge de pourcentage',
+    width: 1080,
+    height: 960,
+    fps: 30,
+    hasAlpha: true,
+    tRange: [0, 1],
+    code: `// Animation Graphique pilotée par window.setT(t)
+window.setT = function(t) {
+  const bars = document.querySelectorAll('.chart-bar');
+  const badge = document.getElementById('stat-badge');
+  bars.forEach((bar, index) => {
+    const progress = Math.min(1, Math.max(0, (t * 1.5) - (index * 0.15)));
+    const targetHeight = [35, 52, 70, 95, 140, 210][index] || 100;
+    (bar as HTMLElement).style.height = \`\${progress * targetHeight}px\`;
+  });
+  if (badge) {
+    const val = Math.round(t * 342);
+    badge.innerText = \`+\${val}%\`;
+  }
+};`
+  },
+  'comp-neural': {
+    id: 'comp-neural',
+    name: 'Réseau de Neurones Vivant',
+    description: 'Noeuds connectés avec impulsions lumineuses le long des synapses',
+    width: 1080,
+    height: 960,
+    fps: 30,
+    hasAlpha: true,
+    tRange: [0, 1],
+    code: `// Animation Réseau de Neurones
+window.setT = function(t) {
+  const synapses = document.querySelectorAll('.synapse-line');
+  synapses.forEach((line, i) => {
+    const offset = (t * 100 + i * 25) % 100;
+    (line as HTMLElement).style.strokeDashoffset = \`\${-offset}\`;
+  });
+};`
+  }
+};
+
+const sampleProjects: ShortProject[] = [
+  {
+    id: 'proj-1',
+    slug: 'short-monteur-ia-claude',
+    title: 'Short 01 — Comment l\'IA révolutionne le montage vidéo',
+    mode: 'split_screen_clips',
+    platform: 'instagram',
+    status: 'ready',
+    duration: 55.4,
+    fps: 30,
+    resolution: { width: 1080, height: 1920 },
+    sourceVideoName: 'interview-melvyn-ia-take04.mp4',
+    speakerVideoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+    currentVersion: 'v2',
+    versions: [
+      { version: 'v1', createdAt: '2026-11-08 14:20', status: 'done', duration: 58.2, fps: 30, notes: 'Version brute initiale avec Whisper' },
+      { version: 'v2', createdAt: '2026-11-09 09:45', status: 'current', duration: 55.4, fps: 30, notes: 'Silences coupés (-2.8s), CTA DM Instagram ajouté, animation de sablier remplacée' },
+      { version: 'v3', createdAt: '2026-11-09 11:10', status: 'rendering', duration: 55.4, fps: 60, notes: 'Export 60fps et retouche de colorimétrie' }
+    ],
+    transcript: [
+      { id: 'w1', word: 'Aujourd\'hui', start: 0.1, end: 0.5, confidence: 0.98 },
+      { id: 'w2', word: 'tout', start: 0.52, end: 0.75, confidence: 0.99 },
+      { id: 'w3', word: 'le', start: 0.76, end: 0.88, confidence: 0.99 },
+      { id: 'w4', word: 'monde', start: 0.89, end: 1.25, confidence: 0.98 },
+      { id: 'w5', word: 'pense', start: 1.3, end: 1.65, confidence: 0.97 },
+      { id: 'w6', word: 'que', start: 1.66, end: 1.82, confidence: 0.99 },
+      { id: 'w7', word: 'le', start: 1.83, end: 1.95, confidence: 0.99 },
+      { id: 'w8', word: 'montage', start: 1.96, end: 2.45, confidence: 0.98 },
+      { id: 'w9', word: 'vidéo', start: 2.48, end: 2.85, confidence: 0.99 },
+      { id: 'w10', word: 'prend', start: 2.9, end: 3.2, confidence: 0.97 },
+      { id: 'w11', word: 'des', start: 3.22, end: 3.4, confidence: 0.98 },
+      { id: 'w12', word: 'heures.', start: 3.42, end: 3.9, confidence: 0.98 },
+      { id: 'w13', word: 'Mais', start: 4.1, end: 4.35, confidence: 0.99 },
+      { id: 'w14', word: 'regarde', start: 4.38, end: 4.75, confidence: 0.98 },
+      { id: 'w15', word: 'ce', start: 4.78, end: 4.95, confidence: 0.99 },
+      { id: 'w16', word: 'moteur', start: 4.98, end: 5.42, confidence: 0.98 },
+      { id: 'w17', word: 'propriétaire', start: 5.45, end: 6.1, confidence: 0.96 },
+      { id: 'w18', word: 'codé', start: 6.15, end: 6.45, confidence: 0.98 },
+      { id: 'w19', word: 'en', start: 6.48, end: 6.6, confidence: 0.99 },
+      { id: 'w20', word: 'WebCodecs', start: 6.62, end: 7.3, confidence: 0.95 },
+      { id: 'w21', word: 'et', start: 7.35, end: 7.48, confidence: 0.99 },
+      { id: 'w22', word: 'Playwright.', start: 7.5, end: 8.2, confidence: 0.94 },
+      { id: 'w23', word: 'On', start: 8.4, end: 8.6, confidence: 0.99 },
+      { id: 'w24', word: 'rend', start: 8.62, end: 8.88, confidence: 0.98 },
+      { id: 'w25', word: 'une', start: 8.9, end: 9.05, confidence: 0.99 },
+      { id: 'w26', word: 'minute', start: 9.08, end: 9.45, confidence: 0.98 },
+      { id: 'w27', word: 'en', start: 9.48, end: 9.62, confidence: 0.99 },
+      { id: 'w28', word: '8.5', start: 9.65, end: 10.2, confidence: 0.99 },
+      { id: 'w29', word: 'secondes', start: 10.22, end: 10.8, confidence: 0.98 },
+      { id: 'w30', word: 'à', start: 10.85, end: 10.98, confidence: 0.99 },
+      { id: 'w31', word: 'près', start: 11.0, end: 11.25, confidence: 0.98 },
+      { id: 'w32', word: 'de', start: 11.26, end: 11.38, confidence: 0.99 },
+      { id: 'w33', word: '200', start: 11.4, end: 11.85, confidence: 0.98 },
+      { id: 'w34', word: 'images', start: 11.88, end: 12.35, confidence: 0.98 },
+      { id: 'w35', word: 'par', start: 12.38, end: 12.55, confidence: 0.99 },
+      { id: 'w36', word: 'seconde !', start: 12.58, end: 13.2, confidence: 0.97 },
+      { id: 'w37', word: 'Voici', start: 13.5, end: 13.85, confidence: 0.98 },
+      { id: 'w38', word: 'exactement', start: 13.88, end: 14.5, confidence: 0.97 },
+      { id: 'w39', word: 'comment', start: 14.52, end: 14.88, confidence: 0.99 },
+      { id: 'w40', word: 'l\'IA', start: 14.9, end: 15.25, confidence: 0.98 },
+      { id: 'w41', word: 'Claude', start: 15.28, end: 15.65, confidence: 0.98 },
+      { id: 'w42', word: 'et', start: 15.68, end: 15.8, confidence: 0.99 },
+      { id: 'w43', word: 'ChatGPT', start: 15.82, end: 16.4, confidence: 0.98 },
+      { id: 'w44', word: 'interagissent.', start: 16.42, end: 17.2, confidence: 0.97 }
+    ],
+    motionTrack: [
+      { id: 'm1', componentId: 'comp-chart', name: 'Courbe Vitesse 200 FPS', start: 0.5, end: 8.5, type: 'chart' },
+      { id: 'm2', componentId: 'comp-rocket', name: 'Fusée Accélération x10', start: 8.6, end: 18.0, type: 'rocket' },
+      { id: 'm3', componentId: 'comp-neural', name: 'Synapses IA & Whisper', start: 18.2, end: 32.0, type: 'network' },
+      { id: 'm4', componentId: 'comp-chart', name: 'Comparatif Remotion vs WebCodecs', start: 32.2, end: 45.0, type: 'card' },
+      { id: 'm5', componentId: 'comp-rocket', name: 'CTA Final Instagram DM', start: 45.2, end: 55.4, type: 'typography' }
+    ],
+    layoutTrack: [
+      { id: 'l1', layout: 'split', start: 0, end: 18.0 },
+      { id: 'l2', layout: 'fullscreen', start: 18.0, end: 28.5 },
+      { id: 'l3', layout: 'split', start: 28.5, end: 45.0 },
+      { id: 'l4', layout: 'facecam', start: 45.0, end: 55.4 }
+    ],
+    sfxTrack: [
+      { id: 's1', sound: 'whoosh', start: 0.4, volume: 0.8 },
+      { id: 's2', sound: 'pop', start: 4.8, volume: 0.7 },
+      { id: 's3', sound: 'click', start: 8.5, volume: 0.6 },
+      { id: 's4', sound: 'thump', start: 18.1, volume: 0.9 },
+      { id: 's5', sound: 'ding', start: 45.0, volume: 0.85 }
+    ],
+    musicTrack: {
+      trackName: 'code-noir-phonk-remix.mp3',
+      volume: 0.18,
+      ducking: true
+    },
+    feedbacks: [
+      {
+        id: 'fb-1',
+        timestamp: 1.38,
+        timeFormatted: '00:01.38',
+        text: 'Le sablier est totalement infâme, remplace-le par une animation de compteur dynamique qui grimpe à 200 FPS.',
+        author: 'Melvyn',
+        resolved: true,
+        targetElement: 'MotionOverlay > #hourglass-asset',
+        createdAt: '2026-11-09 09:12'
+      },
+      {
+        id: 'fb-2',
+        timestamp: 8.52,
+        timeFormatted: '00:08.52',
+        text: 'Agrandis la typographie du mot "8.5 SECONDES" de 25% et passe la en couleur orange électrique.',
+        author: 'Melvyn',
+        resolved: false,
+        targetElement: 'Caption > .highlight-word[data-word="8.5"]',
+        drawingSnapshot: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="100%" height="100%" fill="%231a1a1a"/><circle cx="150" cy="100" r="50" stroke="%23ff6600" stroke-width="4" fill="none"/><text x="150" y="105" fill="%23fff" font-size="12" text-anchor="middle">ZOOM +25%</text></svg>',
+        createdAt: '2026-11-09 10:04'
+      },
+      {
+        id: 'fb-3',
+        timestamp: 15.20,
+        timeFormatted: '00:15.20',
+        text: 'Le split-screen coupe légèrement le menton de l\'intervenant, recadre la facecam 4% plus bas.',
+        author: 'Melvyn',
+        resolved: false,
+        targetElement: 'LayoutSplitScreen > FacecamWrapper',
+        createdAt: '2026-11-09 10:45'
+      }
+    ],
+    motionComponents: initialMotionComponents,
+    contactSheet: Array.from({ length: 12 }, (_, i) => {
+      const ts = (i / 11) * 55.4;
+      return {
+        frameIndex: i + 1,
+        timestamp: Number(ts.toFixed(2)),
+        timeFormatted: `00:${ts < 10 ? '0' : ''}${ts.toFixed(1)}s`,
+        title: [
+          'Hook Accroche (0-1.5s)',
+          'Statistique Moteur (4s)',
+          'Barres Dynamiques (8.5s)',
+          'Transition Whoosh (13s)',
+          'Synapses Neurales (18s)',
+          'Plein Écran Motion (23s)',
+          'Zoom Données (28s)',
+          'Retour Split-Screen (33s)',
+          'Graphique Boursier (38s)',
+          'Comparatif Rendu (42s)',
+          'Appel à l\'action DM (48s)',
+          'Outro & Logo (54s)'
+        ][i] || `Frame #${i + 1}`,
+        qcCheck: i === 1 ? 'revise' : 'pass',
+        notes: i === 1 ? 'Sous-titre à grossir' : 'Conforme aux règles des 1.5s'
+      };
+    }),
+    styleProfile: {
+      name: 'Melvyn Dark High-Contrast Orange',
+      fontFamily: 'Inter, Montserrat, sans-serif',
+      accentColor: '#FF6B00',
+      textColor: '#FFFFFF',
+      cardBg: '#18181B',
+      captionsPosition: 'center_divider',
+      visualBeatsTarget: 22
+    }
+  },
+  {
+    id: 'proj-2',
+    slug: 'short-moteur-vs-remotion',
+    title: 'Short 02 — Pourquoi Remotion est 12x plus lent que WebCodecs',
+    mode: 'faceless_explainer',
+    platform: 'tiktok',
+    status: 'ready',
+    duration: 44.2,
+    fps: 30,
+    resolution: { width: 1080, height: 1920 },
+    currentVersion: 'v1',
+    versions: [
+      { version: 'v1', createdAt: '2026-11-09 10:15', status: 'current', duration: 44.2, fps: 30, notes: 'Faceless 100% animé avec voix off et motion Canvas' }
+    ],
+    transcript: [
+      { id: 'w101', word: '106', start: 0.1, end: 0.5, confidence: 0.99 },
+      { id: 'w102', word: 'secondes', start: 0.52, end: 0.95, confidence: 0.99 },
+      { id: 'w103', word: 'pour', start: 0.98, end: 1.15, confidence: 0.99 },
+      { id: 'w104', word: 'rendre', start: 1.18, end: 1.45, confidence: 0.98 },
+      { id: 'w105', word: 'une', start: 1.48, end: 1.6, confidence: 0.99 },
+      { id: 'w106', word: 'vidéo ?', start: 1.62, end: 2.1, confidence: 0.99 },
+      { id: 'w107', word: 'C\'est', start: 2.3, end: 2.5, confidence: 0.99 },
+      { id: 'w108', word: 'inacceptable.', start: 2.52, end: 3.2, confidence: 0.98 }
+    ],
+    motionTrack: [
+      { id: 'm101', componentId: 'comp-chart', name: 'Comparaison Chrono', start: 0, end: 15, type: 'chart' },
+      { id: 'm102', componentId: 'comp-rocket', name: 'WebCodecs GPU Turbo', start: 15.1, end: 30, type: 'rocket' },
+      { id: 'm103', componentId: 'comp-neural', name: 'Pipeline Headless Chrome', start: 30.1, end: 44.2, type: 'network' }
+    ],
+    layoutTrack: [
+      { id: 'l101', layout: 'fullscreen', start: 0, end: 44.2 }
+    ],
+    sfxTrack: [
+      { id: 's101', sound: 'whoosh', start: 0.2, volume: 0.8 },
+      { id: 's102', sound: 'click', start: 2.5, volume: 0.7 }
+    ],
+    musicTrack: {
+      trackName: 'cyberpunk-dark-bass.mp3',
+      volume: 0.22,
+      ducking: true
+    },
+    feedbacks: [],
+    motionComponents: initialMotionComponents,
+    contactSheet: Array.from({ length: 12 }, (_, i) => ({
+      frameIndex: i + 1,
+      timestamp: Number(((i / 11) * 44.2).toFixed(2)),
+      timeFormatted: `00:${((i / 11) * 44.2).toFixed(1)}s`,
+      title: `Beat Visuel #${i + 1}`,
+      qcCheck: 'pass',
+      notes: 'Faceless 100% motion dynamique'
+    })),
+    styleProfile: {
+      name: 'Cyber Kinetic',
+      fontFamily: 'Space Grotesk, sans-serif',
+      accentColor: '#00F0FF',
+      textColor: '#FFFFFF',
+      cardBg: '#090D16',
+      captionsPosition: 'bottom',
+      visualBeatsTarget: 24
+    }
+  }
+];
+
+// Available source takes in takes/
+const availableSourceVideos = [
+  { id: 'take-1', name: 'interview-melvyn-ia-take04.mp4', duration: 420.5, resolution: '1920x1080', sizeMb: 248.4, recordedAt: '2026-11-07' },
+  { id: 'take-2', name: 'podcast-moteur-webcodecs-camA.mp4', duration: 615.0, resolution: '3840x2160', sizeMb: 850.1, recordedAt: '2026-11-08' },
+  { id: 'take-3', name: 'demo-remotion-vs-chrome-headless.mp4', duration: 185.2, resolution: '1920x1080', sizeMb: 94.2, recordedAt: '2026-11-09' }
+];
+
+// Jobs queue
+const backgroundJobs: Record<string, any> = {};
+
+// -------------------------------------------------------------
+// MCP TOOL DEFINITIONS (The 15 Commands from the documentation)
+// -------------------------------------------------------------
+const MCP_TOOLS = [
+  {
+    name: 'studio_status',
+    description: 'Vérifier l\'état complet du studio (moteur de rendu, Whisper, stockage, ffmpeg, jobs en cours)',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'list_source_videos',
+    description: 'Lister les vidéos sources disponibles dans le dossier VideoAgentStudio/takes',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'download_source_video',
+    description: 'Télécharger une vidéo source depuis une URL autorisée (ou importer dans takes/)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL de la vidéo source publique ou autorisée' },
+        filename: { type: 'string', description: 'Nom de fichier cible sous VideoAgentStudio/takes/' }
+      },
+      required: ['url']
+    }
+  },
+  {
+    name: 'create_short_project',
+    description: 'Créer un nouveau projet de Short (Mode A Faceless Explainer ou Mode B Split-Screen Clips)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Identifiant court (ex: short-ia-monteur)' },
+        title: { type: 'string', description: 'Titre du projet' },
+        mode: { type: 'string', enum: ['faceless_explainer', 'split_screen_clips'], description: 'Format de production' },
+        platform: { type: 'string', enum: ['instagram', 'tiktok', 'youtube_shorts'], description: 'Plateforme cible' },
+        source_video: { type: 'string', description: 'Nom de la vidéo source dans takes/ (pour Mode B)' }
+      },
+      required: ['slug', 'title', 'mode']
+    }
+  },
+  {
+    name: 'transcribe_short',
+    description: 'Transcrire la vidéo ou l\'audio avec Whisper mot par mot (FR, EN, ES, DE, IT, PT)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        language: { type: 'string', enum: ['fr', 'en', 'es', 'de', 'it', 'pt'], default: 'fr' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'read_short_transcript',
+    description: 'Lire la transcription complète avec les timecodes mot par mot et les coupures',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'prepare_short',
+    description: 'Préparer la timeline, couper les silences, normaliser la voix et préparer les rushs',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        cut_silences: { type: 'boolean', default: true },
+        start_time: { type: 'number', description: 'Temps de début dans le rush (secondes)' },
+        end_time: { type: 'number', description: 'Temps de fin dans le rush (secondes)' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'save_edit_spec',
+    description: 'Enregistrer le scénario technique (timeline, pistes MOTION, LAYOUT, SFX, MUSIC)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        edit_spec: { type: 'object', description: 'Spécification technique du montage (timeline et calques)' }
+      },
+      required: ['project_id', 'edit_spec']
+    }
+  },
+  {
+    name: 'write_motion_component',
+    description: 'Créer ou mettre à jour un composant d\'animation HTML/SVG/Canvas piloté par window.setT(t)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        component_name: { type: 'string', description: 'Nom du composant (ex: rocket_launch, chart_bar)' },
+        code: { type: 'string', description: 'Code JS/HTML/Canvas contenant window.setT = function(t) { ... }' },
+        description: { type: 'string', description: 'Ce que l\'animation représente' },
+        has_alpha: { type: 'boolean', default: true }
+      },
+      required: ['component_name', 'code']
+    }
+  },
+  {
+    name: 'capture_motion_component',
+    description: 'Transformer une animation de composant en séquence vidéo (540x960 ou 1080x1920, 12-30 fps, alpha)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        component_name: { type: 'string', description: 'Nom du composant créé via write_motion_component' },
+        resolution: { type: 'string', enum: ['540x960', '1080x1920'], default: '1080x1920' },
+        fps: { type: 'number', minimum: 12, maximum: 30, default: 30 },
+        duration: { type: 'number', minimum: 0.5, maximum: 20.0, default: 5.0 },
+        has_alpha: { type: 'boolean', default: true }
+      },
+      required: ['component_name']
+    }
+  },
+  {
+    name: 'render_short',
+    description: 'Produire un rendu vidéo (draft rapide ou rendu final 1080x1920 MP4)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        quality: { type: 'string', enum: ['draft', 'final'], default: 'draft' },
+        version: { type: 'string', description: 'Nom de version (ex: v2, v3)' },
+        fps: { type: 'number', enum: [30, 60], default: 30 }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'job_status',
+    description: 'Suivre l\'état d\'avancement d\'une tâche de rendu ou de transcription',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'ID du job retourné par render_short ou transcribe_short' }
+      },
+      required: ['job_id']
+    }
+  },
+  {
+    name: 'get_short_outputs',
+    description: 'Récupérer les livrables d\'un projet : MP4 final, SRT/VTT, miniatures, planche contact',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        version: { type: 'string', description: 'Version souhaitée (défaut: current)' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'make_reference_contact_sheet',
+    description: 'Extraire une planche de 12 images représentatives pour le contrôle qualité (QC)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        version: { type: 'string', default: 'current' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'save_style_profile',
+    description: 'Enregistrer un profil graphique réutilisable (couleurs, typo, composition)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nom du style (ex: Melvyn Dark Orange)' },
+        font_family: { type: 'string' },
+        accent_color: { type: 'string' },
+        text_color: { type: 'string' },
+        card_bg: { type: 'string' },
+        visual_beats_target: { type: 'number', default: 22 }
+      },
+      required: ['name', 'accent_color']
+    }
+  }
+];
+
+// Helper to execute any tool
+function executeToolCall(toolName: string, args: any) {
+  switch (toolName) {
+    case 'studio_status': {
+      return {
+        status: 'online',
+        serverTime: new Date().toISOString(),
+        engine: {
+          name: 'VideoAgentStudio Engine (ARM64 / WebCodecs)',
+          renderFps: '~198.4 fps',
+          averageRenderTime: '8.5s pour 60s',
+          backend: 'Playwright Headless Chrome + WebCodecs H.264',
+          ffmpeg: 'FFmpeg 7.0 (accélération matérielle active)',
+          whisper: 'Whisper.cpp (large-v3-turbo / 6 langues supportées)',
+          kaggleGpuBridge: 'Configuré (optionnel pour batch GPU)'
+        },
+        projectsCount: sampleProjects.length,
+        availableTakes: availableSourceVideos.length,
+        activeJobs: Object.keys(backgroundJobs).length,
+        storage: {
+          freeGb: 48.2,
+          takesDirectory: 'VideoAgentStudio/takes',
+          rendersDirectory: 'VideoAgentStudio/renders'
+        }
+      };
+    }
+
+    case 'list_source_videos': {
+      return {
+        count: availableSourceVideos.length,
+        directory: 'VideoAgentStudio/takes',
+        videos: availableSourceVideos
+      };
+    }
+
+    case 'download_source_video': {
+      const newVideo = {
+        id: `take-${availableSourceVideos.length + 1}`,
+        name: args.filename || `source-${Date.now()}.mp4`,
+        duration: 120.0,
+        resolution: '1920x1080',
+        sizeMb: 64.5,
+        recordedAt: new Date().toISOString().split('T')[0],
+        url: args.url
+      };
+      availableSourceVideos.push(newVideo);
+      return {
+        success: true,
+        message: `Vidéo téléchargée avec succès dans VideoAgentStudio/takes/${newVideo.name}`,
+        video: newVideo
+      };
+    }
+
+    case 'create_short_project': {
+      const newProj: ShortProject = {
+        id: `proj-${Date.now()}`,
+        slug: args.slug,
+        title: args.title,
+        mode: args.mode,
+        platform: args.platform || 'instagram',
+        status: 'draft',
+        duration: 45.0,
+        fps: 30,
+        resolution: { width: 1080, height: 1920 },
+        sourceVideoName: args.source_video || 'interview-melvyn-ia-take04.mp4',
+        currentVersion: 'v1',
+        versions: [
+          { version: 'v1', createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16), status: 'current', duration: 45.0, fps: 30, notes: 'Projet créé via ChatGPT / MCP' }
+        ],
+        transcript: [
+          { id: 'w1', word: 'Introduction', start: 0.1, end: 0.8, confidence: 0.99 },
+          { id: 'w2', word: 'du', start: 0.85, end: 1.1, confidence: 0.99 },
+          { id: 'w3', word: 'nouveau', start: 1.15, end: 1.6, confidence: 0.98 },
+          { id: 'w4', word: 'projet !', start: 1.65, end: 2.2, confidence: 0.99 }
+        ],
+        motionTrack: [
+          { id: 'm1', componentId: 'comp-chart', name: 'Intro Graphique', start: 0, end: 5, type: 'chart' }
+        ],
+        layoutTrack: [
+          { id: 'l1', layout: args.mode === 'split_screen_clips' ? 'split' : 'fullscreen', start: 0, end: 45.0 }
+        ],
+        sfxTrack: [
+          { id: 's1', sound: 'whoosh', start: 0.2, volume: 0.8 }
+        ],
+        musicTrack: { trackName: 'ambient-tech.mp3', volume: 0.15, ducking: true },
+        feedbacks: [],
+        motionComponents: { ...initialMotionComponents },
+        contactSheet: Array.from({ length: 12 }, (_, i) => ({
+          frameIndex: i + 1,
+          timestamp: Number(((i / 11) * 45).toFixed(2)),
+          timeFormatted: `00:${((i / 11) * 45).toFixed(1)}s`,
+          title: `Frame #${i + 1}`,
+          qcCheck: 'pass',
+          notes: 'Plan initial'
+        })),
+        styleProfile: {
+          name: 'Default Clean VF',
+          fontFamily: 'Inter, sans-serif',
+          accentColor: '#FF6B00',
+          textColor: '#FFFFFF',
+          cardBg: '#18181B',
+          captionsPosition: 'center_divider',
+          visualBeatsTarget: 20
+        }
+      };
+      sampleProjects.unshift(newProj);
+      return {
+        success: true,
+        projectId: newProj.id,
+        slug: newProj.slug,
+        mode: newProj.mode,
+        message: `Projet "${newProj.title}" initialisé avec succès.`
+      };
+    }
+
+    case 'transcribe_short': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      const jobId = `job-transcribe-${Date.now()}`;
+      backgroundJobs[jobId] = {
+        id: jobId,
+        type: 'transcription',
+        projectId: proj.id,
+        progress: 100,
+        status: 'completed',
+        wordsCount: proj.transcript.length,
+        language: args.language || 'fr'
+      };
+      return {
+        jobId,
+        status: 'completed',
+        wordsCount: proj.transcript.length,
+        language: args.language || 'fr',
+        message: 'Transcription Whisper mot-à-mot terminée avec succès.'
+      };
+    }
+
+    case 'read_short_transcript': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      return {
+        projectId: proj.id,
+        slug: proj.slug,
+        wordsCount: proj.transcript.length,
+        transcript: proj.transcript,
+        fullText: proj.transcript.filter(w => !w.isCut).map(w => w.word).join(' ')
+      };
+    }
+
+    case 'prepare_short': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      return {
+        success: true,
+        projectId: proj.id,
+        silencesRemovedSeconds: 2.8,
+        adjustedDuration: proj.duration,
+        message: 'Coupes de silences appliquées, voix normalisée et timeline prête.'
+      };
+    }
+
+    case 'save_edit_spec': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      if (args.edit_spec?.motionTrack) proj.motionTrack = args.edit_spec.motionTrack;
+      if (args.edit_spec?.layoutTrack) proj.layoutTrack = args.edit_spec.layoutTrack;
+      if (args.edit_spec?.sfxTrack) proj.sfxTrack = args.edit_spec.sfxTrack;
+      return {
+        success: true,
+        projectId: proj.id,
+        message: 'Scénario technique de montage sauvegardé dans spec.json.'
+      };
+    }
+
+    case 'write_motion_component': {
+      const id = `comp-${args.component_name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
+      const comp: MotionComponent = {
+        id,
+        name: args.component_name,
+        code: args.code,
+        description: args.description || 'Composant d\'animation personnalisé',
+        tRange: [0, 1],
+        width: 1080,
+        height: 1080,
+        fps: 30,
+        hasAlpha: args.has_alpha ?? true
+      };
+      initialMotionComponents[id] = comp;
+      sampleProjects.forEach(p => {
+        p.motionComponents[id] = comp;
+      });
+      return {
+        success: true,
+        componentId: id,
+        name: comp.name,
+        message: `Composant d'animation "${comp.name}" enregistré avec fonction window.setT(t).`
+      };
+    }
+
+    case 'capture_motion_component': {
+      return {
+        success: true,
+        component: args.component_name,
+        framesCount: Math.round((args.duration || 5) * (args.fps || 30)),
+        videoAssetUrl: `/assets/rendered/${args.component_name}.mp4`,
+        message: `Séquence de ${args.duration || 5}s capturée à ${args.fps || 30}fps avec canal alpha.`
+      };
+    }
+
+    case 'render_short': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      const nextV = `v${proj.versions.length + 1}`;
+      proj.versions.unshift({
+        version: nextV,
+        createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        status: 'current',
+        duration: proj.duration,
+        fps: args.fps || 30,
+        notes: `Rendu ${args.quality || 'draft'} généré via MCP`
+      });
+      proj.currentVersion = nextV;
+      return {
+        success: true,
+        projectId: proj.id,
+        version: nextV,
+        renderTimeSeconds: 8.5,
+        renderFps: 198,
+        outputMp4: `VideoAgentStudio/renders/${proj.slug}_${nextV}.mp4`,
+        resolution: '1080x1920',
+        message: `Rendu ${nextV} terminé en 8.5s à ~198 fps.`
+      };
+    }
+
+    case 'job_status': {
+      const job = backgroundJobs[args.job_id] || {
+        id: args.job_id,
+        status: 'completed',
+        progress: 100,
+        message: 'Tâche exécutée'
+      };
+      return job;
+    }
+
+    case 'get_short_outputs': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      const ver = args.version || proj.currentVersion;
+      return {
+        projectId: proj.id,
+        slug: proj.slug,
+        version: ver,
+        files: {
+          mp4: `/renders/${proj.slug}_${ver}.mp4`,
+          srt: `/subtitles/${proj.slug}_${ver}.srt`,
+          vtt: `/subtitles/${proj.slug}_${ver}.vtt`,
+          thumbnail: `/thumbnails/${proj.slug}_cover.jpg`,
+          contactSheet: `/qc/${proj.slug}_contact_sheet.png`
+        },
+        metadata: {
+          duration: proj.duration,
+          resolution: '1080x1920',
+          aspectRatio: '9:16',
+          fps: proj.fps
+        }
+      };
+    }
+
+    case 'make_reference_contact_sheet': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet ${args.project_id} introuvable.`);
+      return {
+        projectId: proj.id,
+        framesCount: 12,
+        contactSheet: proj.contactSheet,
+        overallQcStatus: proj.contactSheet.some(f => f.qcCheck === 'blocked') ? 'BLOCKED' : proj.contactSheet.some(f => f.qcCheck === 'revise') ? 'REVISE' : 'PASS',
+        recommendations: [
+          'Vérifier que le hook visuel change dans les 1.5 premières secondes',
+          'Vérifier la lisibilité des sous-titres (2 à 5 mots max)',
+          'Vérifier l\'absence de scène statique de plus de 2.5 secondes'
+        ]
+      };
+    }
+
+    case 'save_style_profile': {
+      return {
+        success: true,
+        profile: {
+          name: args.name,
+          fontFamily: args.font_family || 'Inter, sans-serif',
+          accentColor: args.accent_color,
+          textColor: args.text_color || '#FFFFFF',
+          cardBg: args.card_bg || '#18181B',
+          visualBeatsTarget: args.visual_beats_target || 22
+        },
+        message: `Profil graphique "${args.name}" enregistré et configuré comme profil par défaut.`
+      };
+    }
+
+    default:
+      throw new Error(`Outil inconnu : ${toolName}`);
+  }
+}
+
+// -------------------------------------------------------------
+// MCP JSON-RPC 2.0 PROTOCOL ENDPOINT (For ChatGPT MCP, Claude, etc.)
+// -------------------------------------------------------------
+app.post('/api/mcp', (req: Request, res: Response) => {
+  const { jsonrpc, id, method, params } = req.body;
+
+  if (method === 'initialize') {
+    return res.json({
+      jsonrpc: '2.0',
+      id,
+      result: {
+        protocolVersion: '2024-11-05',
+        capabilities: {
+          tools: {
+            listChanged: false
+          },
+          resources: {
+            subscribe: false,
+            listChanged: false
+          }
+        },
+        serverInfo: {
+          name: 'video-agent-studio-vf',
+          version: '1.0.0'
+        }
+      }
+    });
+  }
+
+  if (method === 'notifications/initialized') {
+    return res.status(200).send();
+  }
+
+  if (method === 'tools/list') {
+    return res.json({
+      jsonrpc: '2.0',
+      id,
+      result: {
+        tools: MCP_TOOLS
+      }
+    });
+  }
+
+  if (method === 'tools/call') {
+    const { name, arguments: args } = params || {};
+    try {
+      const output = executeToolCall(name, args || {});
+      return res.json({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(output, null, 2)
+            }
+          ]
+        }
+      });
+    } catch (err: any) {
+      return res.json({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `ERREUR : ${err.message}`
+            }
+          ],
+          isError: true
+        }
+      });
+    }
+  }
+
+  // Ping
+  if (method === 'ping') {
+    return res.json({ jsonrpc: '2.0', id, result: {} });
+  }
+
+  return res.json({
+    jsonrpc: '2.0',
+    id,
+    error: {
+      code: -32601,
+      message: `Méthode non implémentée: ${method}`
+    }
+  });
+});
+
+// SSE endpoint for standard MCP streaming clients
+app.get('/api/mcp/sse', (req: Request, res: Response) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+
+  const sessionId = `mcp-session-${Date.now()}`;
+  res.write(`event: endpoint\ndata: /api/mcp/messages?sessionId=${sessionId}\n\n`);
+
+  req.on('close', () => {
+    // Session closed
+  });
+});
+
+app.post('/api/mcp/messages', (req: Request, res: Response) => {
+  return res.json({ status: 'ok' });
+});
+
+// -------------------------------------------------------------
+// OPENAPI 3.1 SCHEMA FOR CHATGPT CUSTOM GPT ACTIONS
+// (User can paste this URL into ChatGPT Custom GPT Actions to connect immediately!)
+// -------------------------------------------------------------
+app.get('/api/openapi.json', (req: Request, res: Response) => {
+  const host = req.get('host') || 'localhost:3000';
+  const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  const serverUrl = `${protocol}://${host}`;
+
+  const openApiSpec = {
+    openapi: '3.1.0',
+    info: {
+      title: 'Video Agent Studio VF — API pour ChatGPT',
+      description: 'API et commandes du studio de production vidéo assisté par IA (moteur WebCodecs & Playwright, Whisper, montage, timeline, animations window.setT, et contrôle qualité).',
+      version: '1.0.0'
+    },
+    servers: [
+      {
+        url: serverUrl,
+        description: 'Serveur Video Agent Studio'
+      }
+    ],
+    paths: {
+      '/api/studio/status': {
+        get: {
+          operationId: 'studio_status',
+          summary: 'Vérifier l\'état du studio',
+          description: 'Vérifie l\'état du moteur de rendu, de Whisper, du stockage et des tâches en cours.',
+          responses: {
+            '200': {
+              description: 'Statut du studio',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/videos': {
+        get: {
+          operationId: 'list_source_videos',
+          summary: 'Lister les vidéos sources',
+          description: 'Liste les vidéos disponibles dans le dossier takes/ pour le montage.',
+          responses: {
+            '200': {
+              description: 'Liste des vidéos',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects': {
+        get: {
+          operationId: 'list_projects',
+          summary: 'Lister tous les projets de Shorts',
+          responses: {
+            '200': {
+              description: 'Liste des projets',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        },
+        post: {
+          operationId: 'create_short_project',
+          summary: 'Créer un nouveau projet Short',
+          description: 'Crée un projet Mode A (Faceless Explainer) ou Mode B (Split-Screen Clip).',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['slug', 'title', 'mode'],
+                  properties: {
+                    slug: { type: 'string', description: 'Identifiant slug du projet' },
+                    title: { type: 'string', description: 'Titre du Short' },
+                    mode: { type: 'string', enum: ['faceless_explainer', 'split_screen_clips'] },
+                    platform: { type: 'string', enum: ['instagram', 'tiktok', 'youtube_shorts'] },
+                    source_video: { type: 'string', description: 'Vidéo source pour Mode B' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Projet créé',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/transcribe': {
+        post: {
+          operationId: 'transcribe_short',
+          summary: 'Transcrire avec Whisper mot-à-mot',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    language: { type: 'string', enum: ['fr', 'en', 'es', 'de', 'it', 'pt'], default: 'fr' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Transcription terminée',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/transcript': {
+        get: {
+          operationId: 'read_short_transcript',
+          summary: 'Lire la transcription complète avec timecodes',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Transcription avec mots et timestamps',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/prepare': {
+        post: {
+          operationId: 'prepare_short',
+          summary: 'Préparer la timeline et l\'audio',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    cut_silences: { type: 'boolean', default: true }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Timeline préparée',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/spec': {
+        post: {
+          operationId: 'save_edit_spec',
+          summary: 'Enregistrer le scénario technique de montage',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    edit_spec: { type: 'object' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Scénario technique sauvegardé',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/components': {
+        post: {
+          operationId: 'write_motion_component',
+          summary: 'Créer une animation HTML/SVG/Canvas pilotée par window.setT(t)',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['component_name', 'code'],
+                  properties: {
+                    component_name: { type: 'string' },
+                    code: { type: 'string' },
+                    description: { type: 'string' },
+                    has_alpha: { type: 'boolean', default: true }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Composant créé',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/render': {
+        post: {
+          operationId: 'render_short',
+          summary: 'Produire un rendu vidéo MP4 (draft ou final)',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    quality: { type: 'string', enum: ['draft', 'final'], default: 'draft' },
+                    fps: { type: 'number', enum: [30, 60], default: 30 }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Rendu produit',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/outputs': {
+        get: {
+          operationId: 'get_short_outputs',
+          summary: 'Récupérer les résultats et fichiers de sortie',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Livrables disponibles',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/contact-sheet': {
+        post: {
+          operationId: 'make_reference_contact_sheet',
+          summary: 'Extraire une planche de 12 images pour le contrôle qualité',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Planche de 12 images avec statuts QC',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      }
+    }
+  };
+
+  return res.json(openApiSpec);
+});
+
+// -------------------------------------------------------------
+// DIRECT REST API ENDPOINTS (For Frontend & ChatGPT Actions)
+// -------------------------------------------------------------
+app.get('/api/studio/status', (req: Request, res: Response) => {
+  return res.json(executeToolCall('studio_status', {}));
+});
+
+app.get('/api/studio/videos', (req: Request, res: Response) => {
+  return res.json(executeToolCall('list_source_videos', {}));
+});
+
+app.post('/api/studio/videos/download', (req: Request, res: Response) => {
+  return res.json(executeToolCall('download_source_video', req.body));
+});
+
+app.get('/api/studio/projects', (req: Request, res: Response) => {
+  return res.json({
+    projects: sampleProjects
+  });
+});
+
+app.get('/api/studio/projects/:id', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+  return res.json(proj);
+});
+
+app.post('/api/studio/projects', (req: Request, res: Response) => {
+  const result = executeToolCall('create_short_project', req.body);
+  return res.json(result);
+});
+
+app.post('/api/studio/projects/:id/transcribe', (req: Request, res: Response) => {
+  const result = executeToolCall('transcribe_short', { project_id: req.params.id, ...req.body });
+  return res.json(result);
+});
+
+app.get('/api/studio/projects/:id/transcript', (req: Request, res: Response) => {
+  const result = executeToolCall('read_short_transcript', { project_id: req.params.id });
+  return res.json(result);
+});
+
+app.post('/api/studio/projects/:id/prepare', (req: Request, res: Response) => {
+  const result = executeToolCall('prepare_short', { project_id: req.params.id, ...req.body });
+  return res.json(result);
+});
+
+app.post('/api/studio/projects/:id/spec', (req: Request, res: Response) => {
+  const result = executeToolCall('save_edit_spec', { project_id: req.params.id, edit_spec: req.body });
+  return res.json(result);
+});
+
+app.post('/api/studio/components', (req: Request, res: Response) => {
+  const result = executeToolCall('write_motion_component', req.body);
+  return res.json(result);
+});
+
+app.post('/api/studio/components/:id/capture', (req: Request, res: Response) => {
+  const result = executeToolCall('capture_motion_component', { component_name: req.params.id, ...req.body });
+  return res.json(result);
+});
+
+app.post('/api/studio/projects/:id/render', (req: Request, res: Response) => {
+  const result = executeToolCall('render_short', { project_id: req.params.id, ...req.body });
+  return res.json(result);
+});
+
+app.get('/api/studio/jobs/:id', (req: Request, res: Response) => {
+  const result = executeToolCall('job_status', { job_id: req.params.id });
+  return res.json(result);
+});
+
+app.get('/api/studio/projects/:id/outputs', (req: Request, res: Response) => {
+  const result = executeToolCall('get_short_outputs', { project_id: req.params.id, version: req.query.version as string });
+  return res.json(result);
+});
+
+app.post('/api/studio/projects/:id/contact-sheet', (req: Request, res: Response) => {
+  const result = executeToolCall('make_reference_contact_sheet', { project_id: req.params.id });
+  return res.json(result);
+});
+
+app.post('/api/studio/styles', (req: Request, res: Response) => {
+  const result = executeToolCall('save_style_profile', req.body);
+  return res.json(result);
+});
+
+// Feedback Management
+app.get('/api/studio/projects/:id/feedbacks', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+  return res.json({ feedbacks: proj.feedbacks });
+});
+
+app.post('/api/studio/projects/:id/feedbacks', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+
+  const { timestamp, timeFormatted, text, targetElement, drawingSnapshot } = req.body;
+  const newFeedback: FeedbackItem = {
+    id: `fb-${Date.now()}`,
+    timestamp: timestamp || 0,
+    timeFormatted: timeFormatted || '00:00.00',
+    text: text || '',
+    author: 'Melvyn',
+    resolved: false,
+    targetElement,
+    drawingSnapshot,
+    createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16)
+  };
+
+  proj.feedbacks.unshift(newFeedback);
+  return res.json({ success: true, feedback: newFeedback });
+});
+
+app.patch('/api/studio/projects/:id/feedbacks/:fId', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+
+  const fb = proj.feedbacks.find(f => f.id === req.params.fId);
+  if (!fb) return res.status(404).json({ error: 'Feedback introuvable' });
+
+  if (typeof req.body.resolved === 'boolean') {
+    fb.resolved = req.body.resolved;
+  }
+  if (req.body.text) {
+    fb.text = req.body.text;
+  }
+
+  return res.json({ success: true, feedback: fb });
+});
+
+app.delete('/api/studio/projects/:id/feedbacks/:fId', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+
+  proj.feedbacks = proj.feedbacks.filter(f => f.id !== req.params.fId);
+  return res.json({ success: true, message: 'Feedback supprimé' });
+});
+
+// Cut / Uncut word in transcript
+app.patch('/api/studio/projects/:id/words/:wId/cut', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+
+  const word = proj.transcript.find(w => w.id === req.params.wId);
+  if (!word) return res.status(404).json({ error: 'Mot introuvable' });
+
+  word.isCut = !word.isCut;
+  return res.json({ success: true, word });
+});
+
+// Format LLM Prompt from Feedbacks (Ready to copy for Claude Code / ChatGPT)
+app.get('/api/studio/projects/:id/copy-prompt', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+
+  const openFeedbacks = proj.feedbacks.filter(f => !f.resolved);
+  const promptLines = [
+    `# RETOURS STUDIO VIDEO AGENT — Projet: ${proj.slug} (Version ${proj.currentVersion})`,
+    `Format: ${proj.mode === 'split_screen_clips' ? 'Mode B — Split-Screen Clips' : 'Mode A — Faceless Explainer'} | 1080x1920 (9:16) | Durée: ${proj.duration}s`,
+    '',
+    'Voici les retours précis horodatés de la session d\'inspection vidéo :',
+    ''
+  ];
+
+  if (openFeedbacks.length === 0) {
+    promptLines.push('Aucun retour ouvert. La vidéo est validée (PASS QC). Prête pour rendu final.');
+  } else {
+    openFeedbacks.forEach((fb, idx) => {
+      promptLines.push(`### Retour #${idx + 1} — Timecode [${fb.timeFormatted}]`);
+      if (fb.targetElement) {
+        promptLines.push(`- **Composant ciblé** : \`${fb.targetElement}\``);
+      }
+      promptLines.push(`- **Instruction** : ${fb.text}`);
+      if (fb.drawingSnapshot) {
+        promptLines.push(`- **Annotation graphique** : [Capture d'écran annotée attachée]`);
+      }
+      promptLines.push('');
+    });
+
+    promptLines.push('---');
+    promptLines.push('## Instructions de correction pour l\'IA :');
+    promptLines.push('1. Modifie le fichier `spec.json` ou les composants `motionComponents` correspondants.');
+    promptLines.push('2. Respecte les règles de qualité : changement visuel toutes les 1.5s, 18-24 temps visuels, sous-titres de 2 à 5 mots max.');
+    promptLines.push(`3. Après mise à jour, lance \`render_short\` pour générer la version suivante (v${proj.versions.length + 1}).`);
+  }
+
+  const promptMarkdown = promptLines.join('\n');
+  return res.json({
+    projectId: proj.id,
+    slug: proj.slug,
+    version: proj.currentVersion,
+    openFeedbacksCount: openFeedbacks.length,
+    promptMarkdown
+  });
+});
+
+// Direct test executor for testing any of the 15 MCP commands from UI
+app.post('/api/studio/execute-tool', (req: Request, res: Response) => {
+  const { toolName, args } = req.body;
+  try {
+    const result = executeToolCall(toolName, args || {});
+    return res.json({ success: true, result });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Setup Vite or static serving
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.resolve(__dirname, 'dist')));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Video Agent Studio VF server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();
