@@ -1,0 +1,288 @@
+{
+  "id": "proj-2",
+  "slug": "short-moteur-vs-remotion",
+  "title": "Short 02 — Pourquoi Remotion est 12x plus lent que WebCodecs",
+  "mode": "faceless_explainer",
+  "platform": "tiktok",
+  "status": "ready",
+  "duration": 44.2,
+  "fps": 30,
+  "resolution": {
+    "width": 1080,
+    "height": 1920
+  },
+  "currentVersion": "v1",
+  "versions": [
+    {
+      "version": "v1",
+      "createdAt": "2026-11-09 10:15",
+      "status": "current",
+      "duration": 44.2,
+      "fps": 30,
+      "notes": "Faceless 100% animé avec voix off et motion Canvas"
+    }
+  ],
+  "transcript": [
+    {
+      "id": "w101",
+      "word": "106",
+      "start": 0.1,
+      "end": 0.5,
+      "confidence": 0.99
+    },
+    {
+      "id": "w102",
+      "word": "secondes",
+      "start": 0.52,
+      "end": 0.95,
+      "confidence": 0.99
+    },
+    {
+      "id": "w103",
+      "word": "pour",
+      "start": 0.98,
+      "end": 1.15,
+      "confidence": 0.99
+    },
+    {
+      "id": "w104",
+      "word": "rendre",
+      "start": 1.18,
+      "end": 1.45,
+      "confidence": 0.98
+    },
+    {
+      "id": "w105",
+      "word": "une",
+      "start": 1.48,
+      "end": 1.6,
+      "confidence": 0.99
+    },
+    {
+      "id": "w106",
+      "word": "vidéo ?",
+      "start": 1.62,
+      "end": 2.1,
+      "confidence": 0.99
+    },
+    {
+      "id": "w107",
+      "word": "C'est",
+      "start": 2.3,
+      "end": 2.5,
+      "confidence": 0.99
+    },
+    {
+      "id": "w108",
+      "word": "inacceptable.",
+      "start": 2.52,
+      "end": 3.2,
+      "confidence": 0.98
+    }
+  ],
+  "motionTrack": [
+    {
+      "id": "m101",
+      "componentId": "comp-chart",
+      "name": "Comparaison Chrono",
+      "start": 0,
+      "end": 15,
+      "type": "chart"
+    },
+    {
+      "id": "m102",
+      "componentId": "comp-rocket",
+      "name": "WebCodecs GPU Turbo",
+      "start": 15.1,
+      "end": 30,
+      "type": "rocket"
+    },
+    {
+      "id": "m103",
+      "componentId": "comp-neural",
+      "name": "Pipeline Headless Chrome",
+      "start": 30.1,
+      "end": 44.2,
+      "type": "network"
+    }
+  ],
+  "layoutTrack": [
+    {
+      "id": "l101",
+      "layout": "fullscreen",
+      "start": 0,
+      "end": 44.2
+    }
+  ],
+  "sfxTrack": [
+    {
+      "id": "s101",
+      "sound": "whoosh",
+      "start": 0.2,
+      "volume": 0.8
+    },
+    {
+      "id": "s102",
+      "sound": "click",
+      "start": 2.5,
+      "volume": 0.7
+    }
+  ],
+  "musicTrack": {
+    "trackName": "cyberpunk-dark-bass.mp3",
+    "volume": 0.22,
+    "ducking": true
+  },
+  "feedbacks": [],
+  "motionComponents": {
+    "comp-rocket": {
+      "id": "comp-rocket",
+      "name": "Fusée en Décollage",
+      "description": "Fusée spatiale 2D avec traînée de particules et vibration d'accélération",
+      "width": 1080,
+      "height": 1080,
+      "fps": 30,
+      "hasAlpha": true,
+      "tRange": [
+        0,
+        1
+      ],
+      "code": "// Animation Fusée pilotée par window.setT(t) [0 -> 1]\nwindow.setT = function(t) {\n  const rocket = document.getElementById('rocket-body');\n  const flame = document.getElementById('rocket-flame');\n  if (!rocket) return;\n  const posY = 500 - (t * 600);\n  const shake = Math.sin(t * 80) * (3 * (1 - t));\n  rocket.style.transform = `translate3d(${shake}px, ${posY}px, 0)`;\n  if (flame) {\n    const scaleY = 0.8 + Math.sin(t * 50) * 0.4;\n    flame.style.transform = `scaleY(${scaleY})`;\n  }\n};"
+    },
+    "comp-chart": {
+      "id": "comp-chart",
+      "name": "Graphique Boursier Exponentiel",
+      "description": "Courbe de croissance avec barres dynamiques et badge de pourcentage",
+      "width": 1080,
+      "height": 960,
+      "fps": 30,
+      "hasAlpha": true,
+      "tRange": [
+        0,
+        1
+      ],
+      "code": "// Animation Graphique pilotée par window.setT(t)\nwindow.setT = function(t) {\n  const bars = document.querySelectorAll('.chart-bar');\n  const badge = document.getElementById('stat-badge');\n  bars.forEach((bar, index) => {\n    const progress = Math.min(1, Math.max(0, (t * 1.5) - (index * 0.15)));\n    const targetHeight = [35, 52, 70, 95, 140, 210][index] || 100;\n    (bar as HTMLElement).style.height = `${progress * targetHeight}px`;\n  });\n  if (badge) {\n    const val = Math.round(t * 342);\n    badge.innerText = `+${val}%`;\n  }\n};"
+    },
+    "comp-neural": {
+      "id": "comp-neural",
+      "name": "Réseau de Neurones Vivant",
+      "description": "Noeuds connectés avec impulsions lumineuses le long des synapses",
+      "width": 1080,
+      "height": 960,
+      "fps": 30,
+      "hasAlpha": true,
+      "tRange": [
+        0,
+        1
+      ],
+      "code": "// Animation Réseau de Neurones\nwindow.setT = function(t) {\n  const synapses = document.querySelectorAll('.synapse-line');\n  synapses.forEach((line, i) => {\n    const offset = (t * 100 + i * 25) % 100;\n    (line as HTMLElement).style.strokeDashoffset = `${-offset}`;\n  });\n};"
+    }
+  },
+  "contactSheet": [
+    {
+      "frameIndex": 1,
+      "timestamp": 0,
+      "timeFormatted": "00:0.0s",
+      "title": "Beat Visuel #1",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 2,
+      "timestamp": 4.02,
+      "timeFormatted": "00:4.0s",
+      "title": "Beat Visuel #2",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 3,
+      "timestamp": 8.04,
+      "timeFormatted": "00:8.0s",
+      "title": "Beat Visuel #3",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 4,
+      "timestamp": 12.05,
+      "timeFormatted": "00:12.1s",
+      "title": "Beat Visuel #4",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 5,
+      "timestamp": 16.07,
+      "timeFormatted": "00:16.1s",
+      "title": "Beat Visuel #5",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 6,
+      "timestamp": 20.09,
+      "timeFormatted": "00:20.1s",
+      "title": "Beat Visuel #6",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 7,
+      "timestamp": 24.11,
+      "timeFormatted": "00:24.1s",
+      "title": "Beat Visuel #7",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 8,
+      "timestamp": 28.13,
+      "timeFormatted": "00:28.1s",
+      "title": "Beat Visuel #8",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 9,
+      "timestamp": 32.15,
+      "timeFormatted": "00:32.1s",
+      "title": "Beat Visuel #9",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 10,
+      "timestamp": 36.16,
+      "timeFormatted": "00:36.2s",
+      "title": "Beat Visuel #10",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 11,
+      "timestamp": 40.18,
+      "timeFormatted": "00:40.2s",
+      "title": "Beat Visuel #11",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    },
+    {
+      "frameIndex": 12,
+      "timestamp": 44.2,
+      "timeFormatted": "00:44.2s",
+      "title": "Beat Visuel #12",
+      "qcCheck": "pass",
+      "notes": "Faceless 100% motion dynamique"
+    }
+  ],
+  "styleProfile": {
+    "name": "Cyber Kinetic",
+    "fontFamily": "Space Grotesk, sans-serif",
+    "accentColor": "#00F0FF",
+    "textColor": "#FFFFFF",
+    "cardBg": "#090D16",
+    "captionsPosition": "bottom",
+    "visualBeatsTarget": 24
+  }
+}

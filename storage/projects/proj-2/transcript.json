@@ -1,0 +1,58 @@
+[
+  {
+    "id": "w101",
+    "word": "106",
+    "start": 0.1,
+    "end": 0.5,
+    "confidence": 0.99
+  },
+  {
+    "id": "w102",
+    "word": "secondes",
+    "start": 0.52,
+    "end": 0.95,
+    "confidence": 0.99
+  },
+  {
+    "id": "w103",
+    "word": "pour",
+    "start": 0.98,
+    "end": 1.15,
+    "confidence": 0.99
+  },
+  {
+    "id": "w104",
+    "word": "rendre",
+    "start": 1.18,
+    "end": 1.45,
+    "confidence": 0.98
+  },
+  {
+    "id": "w105",
+    "word": "une",
+    "start": 1.48,
+    "end": 1.6,
+    "confidence": 0.99
+  },
+  {
+    "id": "w106",
+    "word": "vidéo ?",
+    "start": 1.62,
+    "end": 2.1,
+    "confidence": 0.99
+  },
+  {
+    "id": "w107",
+    "word": "C'est",
+    "start": 2.3,
+    "end": 2.5,
+    "confidence": 0.99
+  },
+  {
+    "id": "w108",
+    "word": "inacceptable.",
+    "start": 2.52,
+    "end": 3.2,
+    "confidence": 0.98
+  }
+]
