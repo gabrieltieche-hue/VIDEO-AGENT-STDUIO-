@@ -696,6 +696,103 @@ const MCP_TOOLS = [
       },
       required: ['name', 'accent_color']
     }
+  },
+  {
+    name: 'upload_source_video',
+    description: 'Importer une vidéo directement dans takes/ (URL ou base64)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string', description: 'Nom du fichier cible sous takes/' },
+        video_url: { type: 'string', description: 'URL de la vidéo source ou pièce jointe' },
+        video_data_base64: { type: 'string', description: 'Contenu binaire base64 optionnel' },
+        duration: { type: 'number', description: 'Durée en secondes' }
+      },
+      required: ['filename']
+    }
+  },
+  {
+    name: 'list_projects',
+    description: 'Lister tous les projets de Shorts créés dans le studio avec leurs statuts',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'get_project',
+    description: 'Ouvrir un projet et obtenir sa configuration complète (mode, timeline, version, etc.)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'get_studio_url',
+    description: 'Obtenir le lien direct partageable vers le projet dans l\'interface Video Agent Studio',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'list_feedbacks',
+    description: 'Lire les retours, commentaires et demandes de modifications horodatés pour un projet',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        status: { type: 'string', enum: ['all', 'open', 'resolved'], default: 'all' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'add_feedback',
+    description: 'Ajouter un commentaire ou une demande de modification horodatée sur la vidéo',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        text: { type: 'string', description: 'Description de la modification souhaitée' },
+        timestamp: { type: 'number', description: 'Timecode en secondes' },
+        timeFormatted: { type: 'string', description: 'Timecode formaté (ex: 00:07.43)' },
+        targetElement: { type: 'string', description: 'Composant ou calque ciblé' },
+        type: { type: 'string', enum: ['comment', 'cut', 'idea'], default: 'comment' }
+      },
+      required: ['project_id', 'text']
+    }
+  },
+  {
+    name: 'create_project_version',
+    description: 'Créer une nouvelle itération du projet (v2, v3...) après application des retours',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' },
+        version: { type: 'string', description: 'Nom de la nouvelle version (ex: v2, v3)' },
+        notes: { type: 'string', description: 'Notes sur les changements apportés' },
+        duration: { type: 'number', description: 'Nouvelle durée en secondes' }
+      },
+      required: ['project_id']
+    }
+  },
+  {
+    name: 'get_version_history',
+    description: 'Consulter l\'historique complet des versions et rendus d\'un projet',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'ID ou slug du projet' }
+      },
+      required: ['project_id']
+    }
   }
 ];
 
@@ -1018,6 +1115,151 @@ function executeToolCall(toolName: string, args: any) {
       };
     }
 
+    case 'upload_source_video': {
+      const vidId = `take-${Date.now()}`;
+      const name = args.filename || `rush-${Date.now()}.mp4`;
+      const newVid = {
+        id: vidId,
+        name,
+        duration: Number(args.duration) || 45.0,
+        resolution: args.resolution || '1080x1920',
+        sizeMb: Number(args.sizeMb) || 24.5,
+        recordedAt: new Date().toISOString().split('T')[0],
+        url: args.video_url || args.video_data_base64 || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80'
+      };
+      availableSourceVideos.unshift(newVid);
+      return {
+        success: true,
+        video: newVid,
+        message: `Vidéo "${name}" (${newVid.duration}s) importée avec succès dans takes/ et disponible pour le montage.`
+      };
+    }
+
+    case 'list_projects': {
+      return {
+        projects: sampleProjects.map(p => ({
+          id: p.id,
+          slug: p.slug,
+          title: p.title,
+          currentVersion: p.currentVersion,
+          mode: p.mode,
+          platform: p.platform,
+          duration: p.duration,
+          feedbacksCount: (p.feedbacks || []).length,
+          openFeedbacksCount: (p.feedbacks || []).filter(f => !f.resolved).length,
+          versionsCount: (p.versions || []).length,
+          studioUrl: `https://ais-pre-eacgacwlcnlnaupvxvzucq-79011270395.europe-west2.run.app/?project=${p.id}`
+        }))
+      };
+    }
+
+    case 'get_project': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet "${args.project_id}" introuvable.`);
+      return {
+        project: proj,
+        studioUrl: `https://ais-pre-eacgacwlcnlnaupvxvzucq-79011270395.europe-west2.run.app/?project=${proj.id}`
+      };
+    }
+
+    case 'get_studio_url': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet "${args.project_id}" introuvable.`);
+      const cloudUrl = `https://ais-pre-eacgacwlcnlnaupvxvzucq-79011270395.europe-west2.run.app/?project=${proj.id}`;
+      const localUrl = `http://localhost:3000/?project=${proj.id}`;
+      return {
+        projectId: proj.id,
+        slug: proj.slug,
+        title: proj.title,
+        currentVersion: proj.currentVersion,
+        cloudUrl,
+        localUrl,
+        shareableMessage: `Lien du projet dans Video Agent Studio : ${cloudUrl}`
+      };
+    }
+
+    case 'list_feedbacks': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet "${args.project_id}" introuvable.`);
+      const allFeedbacks = proj.feedbacks || [];
+      const filter = args.status || 'all';
+      const filtered = allFeedbacks.filter(f => {
+        if (filter === 'open') return !f.resolved;
+        if (filter === 'resolved') return f.resolved;
+        return true;
+      });
+      return {
+        projectId: proj.id,
+        version: proj.currentVersion,
+        total: allFeedbacks.length,
+        openCount: allFeedbacks.filter(f => !f.resolved).length,
+        feedbacks: filtered
+      };
+    }
+
+    case 'add_feedback': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet "${args.project_id}" introuvable.`);
+      const time = Number(args.timestamp) || 0;
+      const formatted = args.timeFormatted || `00:${time < 10 ? '0' : ''}${time.toFixed(2)}`;
+      const newFb: FeedbackItem = {
+        id: `fb-${Date.now()}`,
+        timestamp: time,
+        timeFormatted: formatted,
+        text: args.text,
+        author: args.author || 'Gabriel',
+        resolved: false,
+        targetElement: args.targetElement,
+        drawingSnapshot: args.drawingSnapshot,
+        createdAt: 'A l\'instant'
+      };
+      if (!proj.feedbacks) proj.feedbacks = [];
+      proj.feedbacks.unshift(newFb);
+      return {
+        success: true,
+        feedback: newFb,
+        message: `Retour enregistré au timecode [${formatted}] : "${args.text}"`
+      };
+    }
+
+    case 'create_project_version': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet "${args.project_id}" introuvable.`);
+      const nextNum = proj.versions.length + 1;
+      const versionStr = args.version || `v${nextNum}`;
+      proj.versions.forEach(v => {
+        if (v.status === 'current') v.status = 'done';
+      });
+      const newVersion = {
+        version: versionStr,
+        createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        status: 'current' as const,
+        duration: Number(args.duration) || proj.duration,
+        fps: Number(args.fps) || proj.fps,
+        notes: args.notes || `Version ${versionStr} créée suite aux retours de montage.`
+      };
+      proj.versions.push(newVersion);
+      proj.currentVersion = versionStr;
+      return {
+        success: true,
+        projectId: proj.id,
+        currentVersion: versionStr,
+        versions: proj.versions,
+        message: `Nouvelle version "${versionStr}" créée et définie comme version active du projet.`
+      };
+    }
+
+    case 'get_version_history': {
+      const proj = sampleProjects.find(p => p.id === args.project_id || p.slug === args.project_id);
+      if (!proj) throw new Error(`Projet "${args.project_id}" introuvable.`);
+      return {
+        projectId: proj.id,
+        slug: proj.slug,
+        currentVersion: proj.currentVersion,
+        versions: proj.versions
+      };
+    }
+
     default:
       throw new Error(`Outil inconnu : ${toolName}`);
   }
@@ -1228,6 +1470,78 @@ app.get('/api/openapi.json', (req: Request, res: Response) => {
           responses: {
             '200': {
               description: 'Projet créé',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}': {
+        get: {
+          operationId: 'get_project',
+          summary: 'Obtenir les détails complets d\'un projet',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Données détaillées du projet',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/url': {
+        get: {
+          operationId: 'get_studio_url',
+          summary: 'Obtenir l\'URL de consultation du projet dans le studio',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'URL du studio',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/projects/{id}/versions': {
+        get: {
+          operationId: 'get_version_history',
+          summary: 'Consulter l\'historique des versions d\'un projet',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Historique des versions',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        },
+        post: {
+          operationId: 'create_project_version',
+          summary: 'Créer une nouvelle itération du projet (v2, v3...)',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    version: { type: 'string' },
+                    notes: { type: 'string' },
+                    duration: { type: 'number' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Nouvelle version créée',
               content: { 'application/json': { schema: { type: 'object' } } }
             }
           }
@@ -1489,6 +1803,35 @@ app.get('/api/openapi.json', (req: Request, res: Response) => {
           }
         }
       },
+      '/api/studio/videos/upload': {
+        post: {
+          operationId: 'upload_source_video',
+          summary: 'Importer une vidéo source directement dans takes/',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    filename: { type: 'string' },
+                    video_url: { type: 'string' },
+                    duration: { type: 'number' },
+                    resolution: { type: 'string' },
+                    sizeMb: { type: 'number' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Vidéo importée dans takes/',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
       '/api/studio/components/{name}/capture': {
         post: {
           operationId: 'capture_motion_component',
@@ -1582,6 +1925,10 @@ app.post('/api/studio/videos/download', (req: Request, res: Response) => {
   return res.json(executeToolCall('download_source_video', req.body));
 });
 
+app.post('/api/studio/videos/upload', (req: Request, res: Response) => {
+  return res.json(executeToolCall('upload_source_video', req.body));
+});
+
 app.get('/api/studio/projects', (req: Request, res: Response) => {
   return res.json({
     projects: sampleProjects
@@ -1589,9 +1936,39 @@ app.get('/api/studio/projects', (req: Request, res: Response) => {
 });
 
 app.get('/api/studio/projects/:id', (req: Request, res: Response) => {
-  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
-  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
-  return res.json(proj);
+  try {
+    const result = executeToolCall('get_project', { project_id: req.params.id });
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(404).json({ error: err.message });
+  }
+});
+
+app.get('/api/studio/projects/:id/url', (req: Request, res: Response) => {
+  try {
+    const result = executeToolCall('get_studio_url', { project_id: req.params.id });
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(404).json({ error: err.message });
+  }
+});
+
+app.get('/api/studio/projects/:id/versions', (req: Request, res: Response) => {
+  try {
+    const result = executeToolCall('get_version_history', { project_id: req.params.id });
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(404).json({ error: err.message });
+  }
+});
+
+app.post('/api/studio/projects/:id/versions', (req: Request, res: Response) => {
+  try {
+    const result = executeToolCall('create_project_version', { project_id: req.params.id, ...req.body });
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 app.post('/api/studio/projects', (req: Request, res: Response) => {
