@@ -1212,7 +1212,7 @@ async function executeToolCall(toolName: string, args: any) {
 // -------------------------------------------------------------
 // MCP JSON-RPC 2.0 PROTOCOL ENDPOINT (For ChatGPT MCP, Claude, etc.)
 // -------------------------------------------------------------
-app.post('/api/mcp', async (req: Request, res: Response) => {
+app.post(['/api/mcp', '/mcp'], async (req: Request, res: Response) => {
   const { jsonrpc, id, method, params } = req.body;
 
   if (method === 'initialize') {
@@ -1301,7 +1301,7 @@ app.post('/api/mcp', async (req: Request, res: Response) => {
 });
 
 // SSE endpoint for standard MCP streaming clients
-app.get('/api/mcp/sse', (req: Request, res: Response) => {
+app.get(['/api/mcp/sse', '/mcp/sse', '/sse'], (req: Request, res: Response) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -1317,7 +1317,7 @@ app.get('/api/mcp/sse', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/mcp/messages', (req: Request, res: Response) => {
+app.post(['/api/mcp/messages', '/mcp/messages', '/messages'], (req: Request, res: Response) => {
   return res.json({ status: 'ok' });
 });
 
@@ -1325,7 +1325,7 @@ app.post('/api/mcp/messages', (req: Request, res: Response) => {
 // OPENAPI 3.1 SCHEMA FOR CHATGPT CUSTOM GPT ACTIONS
 // (User can paste this URL into ChatGPT Custom GPT Actions to connect immediately!)
 // -------------------------------------------------------------
-app.get('/api/openapi.json', (req: Request, res: Response) => {
+app.get(['/api/openapi.json', '/openapi.json', '/.well-known/openapi.json'], (req: Request, res: Response) => {
   const host = req.get('host') || 'localhost:3000';
   const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
   const serverUrl = `${protocol}://${host}`;
