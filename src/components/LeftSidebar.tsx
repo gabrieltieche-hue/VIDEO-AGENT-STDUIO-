@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Instagram, Youtube, Sparkles, Folder, Search, 
   ChevronRight, ChevronDown, Check, Info, Scissors, 
-  Clock, Play, Film, MessageSquarePlus, ChevronLeft
+  Clock, Play, Film, MessageSquarePlus, ChevronLeft,
+  Plus, Trash2, Upload, Video
 } from 'lucide-react';
 import { ShortProject, SourceVideo } from '../types/studio';
 
 interface LeftSidebarProps {
   project: ShortProject;
+  projects?: ShortProject[];
+  onSelectProject?: (project: ShortProject) => void;
+  onOpenNewProject?: () => void;
+  onDeleteProject?: (id: string) => void;
+  onImportVideoFile?: (file: File) => void;
   currentTime: number;
   onSeek: (seconds: number) => void;
   onToggleCutWord: (wordId: string) => void;
@@ -20,6 +26,11 @@ interface LeftSidebarProps {
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   project,
+  projects = [],
+  onSelectProject,
+  onOpenNewProject,
+  onDeleteProject,
+  onImportVideoFile,
   currentTime,
   onSeek,
   onToggleCutWord,
@@ -30,7 +41,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   showTranscript,
 }) => {
   const [videoSearch, setVideoSearch] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({
+    'Projets': true,
     'Pubs': false,
     'Shorts': false,
     '2026-10-29': false,
@@ -42,6 +55,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     setOpenFolders(prev => ({ ...prev, [folderName]: !prev[folderName] }));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onImportVideoFile) {
+      onImportVideoFile(file);
+    }
+  };
+
   // Find active word in transcript
   const activeWordIndex = project.transcript.findIndex(
     w => currentTime >= w.start && currentTime <= w.end
@@ -51,14 +71,87 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     <div className="flex h-full select-none text-zinc-300">
       
       {/* ============================================================== */}
-      {/* COLUMN 1: PLATFORMS, RENDERS & VIDEOS BROWSER */}
+      {/* COLUMN 1: PROJECTS, PLATFORMS, RENDERS & VIDEOS BROWSER */}
       {/* ============================================================== */}
       {showLeftPanel && (
-        <aside className="w-56 bg-[#121214] border-r border-zinc-800/80 flex flex-col h-full text-xs overflow-hidden">
+        <aside className="w-56 bg-[#121214] border-r border-zinc-800/80 flex flex-col h-full text-xs overflow-hidden shrink-0">
           
           <div className="flex-1 overflow-y-auto p-2.5 space-y-4 custom-scrollbar">
             
-            {/* 1. Platforms (Matches Screenshot 3, 4, 8) */}
+            {/* 1. Real Projects Section (User can create, switch, and delete projects) */}
+            <div>
+              <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400 mb-1.5 px-1">
+                <span>Projets Studio</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-zinc-500">{projects.length || 1}</span>
+                  {onOpenNewProject && (
+                    <button
+                      onClick={onOpenNewProject}
+                      className="p-0.5 rounded hover:bg-zinc-800 text-orange-400"
+                      title="Nouveau Short"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                {(projects.length > 0 ? projects : [project]).map((p) => {
+                  const isCurrent = p.id === project.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`group w-full p-2 rounded-xl transition flex items-center justify-between cursor-pointer ${
+                        isCurrent
+                          ? 'bg-zinc-800/90 border border-orange-500/50 text-white shadow-sm'
+                          : 'hover:bg-zinc-800/40 text-zinc-400'
+                      }`}
+                      onClick={() => onSelectProject && onSelectProject(p)}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                          p.mode === 'faceless_explainer'
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                            : 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+                        }`}>
+                          {p.mode === 'faceless_explainer' ? 'A' : 'B'}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-xs text-zinc-200 truncate font-mono">
+                            {p.slug}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 truncate">
+                            {p.title}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {isCurrent && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                        )}
+                        {onDeleteProject && projects.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteProject(p.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition"
+                            title="Supprimer ce projet"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Platforms (Matches Screenshot 3, 4, 8) */}
             <div>
               <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400 mb-1.5 px-1">
                 <span>Platforms</span>
@@ -80,8 +173,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       IG
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-medium text-xs text-zinc-200">v2 • Insta</span>
-                      <span className="text-[10px] text-zinc-500">Oct 27, 02:30 PM</span>
+                      <span className="font-medium text-xs text-zinc-200">{project.currentVersion} • Insta</span>
+                      <span className="text-[10px] text-zinc-500">9:16 • DM CTA</span>
                     </div>
                   </div>
                   {project.platform === 'instagram' && (
@@ -105,8 +198,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       TT
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-medium text-xs text-zinc-200">v2 • TikTok</span>
-                      <span className="text-[10px] text-zinc-500">Oct 27, 02:57 PM</span>
+                      <span className="font-medium text-xs text-zinc-200">{project.currentVersion} • TikTok</span>
+                      <span className="text-[10px] text-zinc-500">9:16 • Outro</span>
                     </div>
                   </div>
                 </button>
@@ -125,56 +218,73 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       YT
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-medium text-xs text-zinc-200">v2 • Short</span>
-                      <span className="text-[10px] text-zinc-500">Oct 27, 02:57 PM</span>
+                      <span className="font-medium text-xs text-zinc-200">{project.currentVersion} • Short</span>
+                      <span className="text-[10px] text-zinc-500">9:16 • YouTube</span>
                     </div>
                   </div>
                 </button>
               </div>
             </div>
 
-            {/* 2. Renders • Insta */}
+            {/* 3. Renders • Versions */}
             <div>
               <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400 mb-1.5 px-1">
-                <span>Renders • Insta</span>
-                <span className="font-mono text-zinc-500">2</span>
+                <span>Renders</span>
+                <span className="font-mono text-zinc-500">{project.versions.length || 1}</span>
               </div>
 
               <div className="space-y-1">
-                <div className="p-2 rounded-xl bg-zinc-800/70 border border-zinc-700 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-8 rounded bg-zinc-900 border border-zinc-700 overflow-hidden flex items-center justify-center text-[9px] font-mono text-orange-400">
-                      9:16
+                {project.versions.map((ver) => (
+                  <div
+                    key={ver.version}
+                    className={`p-2 rounded-xl border flex items-center justify-between ${
+                      ver.status === 'current'
+                        ? 'bg-zinc-800/70 border-zinc-700'
+                        : 'hover:bg-zinc-800/40 border-transparent text-zinc-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-8 rounded bg-zinc-900 border border-zinc-700 overflow-hidden flex items-center justify-center text-[9px] font-mono text-orange-400">
+                        9:16
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs text-white">{ver.version}</span>
+                        <span className="text-[10px] text-zinc-500">{ver.createdAt}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-xs text-white">v2</span>
-                      <span className="text-[10px] text-zinc-500">Oct 27, 02:30 PM ...</span>
-                    </div>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                      ver.status === 'current' ? 'bg-zinc-700 text-emerald-400' : 'text-zinc-500'
+                    }`}>
+                      {ver.status === 'current' ? 'Current' : 'Done'}
+                    </span>
                   </div>
-                  <span className="px-1.5 py-0.5 rounded bg-zinc-700 text-[10px] font-mono text-emerald-400">
-                    Current
-                  </span>
-                </div>
-
-                <div className="p-2 rounded-xl hover:bg-zinc-800/40 text-zinc-400 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-8 rounded bg-zinc-900 border border-zinc-800 overflow-hidden flex items-center justify-center text-[9px] font-mono text-zinc-500">
-                      9:16
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-xs text-zinc-300">v1</span>
-                      <span className="text-[10px] text-zinc-500">Oct 27, 01:32 PM • all done</span>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
-            {/* 3. Videos Library (Folders & Rushs) */}
+            {/* 4. Videos & Rushs Library */}
             <div>
               <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400 mb-1.5 px-1">
-                <span>Videos</span>
-                <span className="font-mono text-zinc-500">420</span>
+                <span>Vidéos & Rushs</span>
+                <span className="font-mono text-zinc-500">{sourceVideos.length || 42}</span>
+              </div>
+
+              {/* Import Button */}
+              <div className="mb-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="video/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-[11px] font-medium flex items-center justify-center gap-1.5 transition"
+                >
+                  <Upload className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Importer un Rush / Vidéo</span>
+                </button>
               </div>
 
               {/* Search Bar */}
@@ -184,7 +294,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   type="text"
                   value={videoSearch}
                   onChange={(e) => setVideoSearch(e.target.value)}
-                  placeholder="Search videos"
+                  placeholder="Rechercher vidéos..."
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-7 pr-2 py-1 text-[11px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
                 />
               </div>
@@ -192,10 +302,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               {/* Folders */}
               <div className="space-y-1">
                 {[
+                  { name: 'Rushs importés', count: sourceVideos.length },
                   { name: 'Pubs', count: 68 },
                   { name: 'Shorts', count: 182 },
-                  { name: '2026-10-29', count: 2 },
-                  { name: '2026-10-28', count: 7 },
                   { name: '2026-10-27', count: 4 },
                 ].map((f) => (
                   <div key={f.name}>
@@ -211,31 +320,21 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     </button>
 
                     {/* Sub-items for open folders */}
-                    {openFolders[f.name] && f.name === '2026-10-27' && (
+                    {openFolders[f.name] && f.name === 'Rushs importés' && (
                       <div className="pl-4 pr-1 py-1 space-y-1">
-                        <div className="p-1.5 rounded-lg bg-zinc-800/80 border border-zinc-700 flex items-center gap-2">
-                          <div className="w-5 h-7 rounded bg-zinc-950 overflow-hidden flex items-center justify-center text-[8px] text-orange-400">
-                            ▶
+                        {sourceVideos.map((vid) => (
+                          <div key={vid.id} className="p-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700/60 flex items-center gap-2">
+                            <div className="w-5 h-7 rounded bg-zinc-950 overflow-hidden flex items-center justify-center text-[8px] text-orange-400">
+                              ▶
+                            </div>
+                            <div className="flex flex-col truncate">
+                              <span className="text-[11px] font-medium text-white truncate">
+                                {vid.name}
+                              </span>
+                              <span className="text-[9px] text-zinc-500">{vid.duration}s • {vid.resolution}</span>
+                            </div>
                           </div>
-                          <div className="flex flex-col truncate">
-                            <span className="text-[11px] font-medium text-white truncate">
-                              short-monteur-ia-cl...
-                            </span>
-                            <span className="text-[9px] text-zinc-500">v2</span>
-                          </div>
-                        </div>
-
-                        <div className="p-1.5 rounded-lg hover:bg-zinc-800/50 flex items-center gap-2">
-                          <div className="w-5 h-7 rounded bg-zinc-950 overflow-hidden flex items-center justify-center text-[8px] text-zinc-500">
-                            ▶
-                          </div>
-                          <div className="flex flex-col truncate">
-                            <span className="text-[11px] font-medium text-zinc-300 truncate">
-                              short-prompts-anth...
-                            </span>
-                            <span className="text-[9px] text-zinc-500">v1</span>
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     )}
                   </div>

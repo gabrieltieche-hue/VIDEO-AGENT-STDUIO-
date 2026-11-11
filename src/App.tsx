@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Video, FileText, MessageSquare, Folder, Plus, Sparkles 
+} from 'lucide-react';
 import { Header } from './components/Header';
 import { LeftSidebar } from './components/LeftSidebar';
 import { Player916 } from './components/Player916';
@@ -9,6 +12,8 @@ import { RecorderView } from './components/RecorderView';
 import { ChatGPTModal } from './components/ChatGPTModal';
 import { ContactSheetModal } from './components/ContactSheetModal';
 import { MotionEditorModal } from './components/MotionEditorModal';
+import { NewProjectModal } from './components/NewProjectModal';
+import { CopyPromptModal } from './components/CopyPromptModal';
 import { ShortProject, SourceVideo, FeedbackItem } from './types/studio';
 
 const defaultFeedbacks: FeedbackItem[] = [
@@ -71,8 +76,13 @@ export default function App() {
   const animFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(Date.now());
 
+  // Responsive Mobile Tab navigation
+  const [mobileTab, setMobileTab] = useState<'player' | 'transcript' | 'feedback' | 'projects'>('player');
+
   // UI Modals
   const [chatGptModalOpen, setChatGptModalOpen] = useState(false);
+  const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
+  const [copyPromptModalOpen, setCopyPromptModalOpen] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [motionEditorOpen, setMotionEditorOpen] = useState(false);
 
@@ -83,6 +93,97 @@ export default function App() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Real Project Creation Handler
+  const handleCreateProject = async (data: {
+    title: string;
+    slug: string;
+    mode: 'faceless_explainer' | 'split_screen_clips';
+    platform: 'instagram' | 'tiktok' | 'youtube_shorts';
+    duration: number;
+    script: string;
+    videoUrl?: string;
+    videoFileName?: string;
+  }) => {
+    try {
+      const res = await fetch('/api/studio/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erreur lors de la création du projet');
+      }
+      const result = await res.json();
+      const created: ShortProject = {
+        ...result.project,
+        feedbacks: []
+      };
+      setProjects(prev => [created, ...prev]);
+      setSelectedProject(created);
+      setCurrentTime(0);
+      setIsPlaying(false);
+      showToast(`Projet "${created.title}" créé avec succès !`);
+    } catch (e: any) {
+      showToast(e.message || 'Erreur création');
+      throw e;
+    }
+  };
+
+  // Delete Project Handler
+  const handleDeleteProject = async (id: string) => {
+    try {
+      await fetch(`/api/studio/projects/${id}`, { method: 'DELETE' });
+      setProjects(prev => {
+        const updated = prev.filter(p => p.id !== id);
+        if (selectedProject?.id === id && updated.length > 0) {
+          setSelectedProject(updated[0]);
+          setCurrentTime(0);
+        }
+        return updated;
+      });
+      showToast('Projet supprimé');
+    } catch (e) {
+      showToast('Erreur suppression projet');
+    }
+  };
+
+  // Video File Import Handler
+  const handleImportVideoFile = async (file: File) => {
+    try {
+      const blobUrl = URL.createObjectURL(file);
+      const newVid: SourceVideo = {
+        id: `vid-${Date.now()}`,
+        name: file.name,
+        duration: 45,
+        resolution: '1080x1920',
+        sizeMb: Math.round(file.size / (1024 * 1024)) || 12,
+        recordedAt: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        url: blobUrl,
+        category: 'Shorts'
+      };
+
+      // Register with server
+      await fetch('/api/studio/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVid)
+      }).catch(() => {});
+
+      setSourceVideos(prev => [newVid, ...prev]);
+      if (selectedProject) {
+        setSelectedProject({
+          ...selectedProject,
+          sourceVideoName: file.name,
+          speakerVideoUrl: blobUrl
+        });
+      }
+      showToast(`Vidéo "${file.name}" importée comme rush principal !`);
+    } catch (err) {
+      showToast('Erreur lors de l\'import de la vidéo');
+    }
   };
 
   // Fetch initial project data from server
@@ -292,12 +393,14 @@ export default function App() {
   return (
     <div className="w-screen h-screen bg-[#0c0c0e] text-zinc-200 flex flex-col overflow-hidden font-sans">
       
-      {/* 1. TOP HEADER (Studio vs Recorder + Toggles) */}
+      {/* 1. TOP HEADER (Studio vs Recorder + Toggles + New Project + Copy Prompt) */}
       <Header
         project={selectedProject}
         activeView={activeView}
         onChangeView={setActiveView}
         onOpenChatGPTModal={() => setChatGptModalOpen(true)}
+        onOpenNewProject={() => setNewProjectModalOpen(true)}
+        onOpenCopyPromptModal={() => setCopyPromptModalOpen(true)}
         onCopyPrompt={handleCopyPrompt}
         copiedPrompt={copiedPrompt}
         openFeedbacksCount={openCount}
@@ -319,69 +422,225 @@ export default function App() {
         />
       ) : (
         /* STUDIO VIEW */
-        <div className="flex-1 flex overflow-hidden">
-          
-          {/* Left Column 1 (Platforms, Renders, Videos) & Column 2 (Transcript) */}
-          <LeftSidebar
-            project={selectedProject}
-            currentTime={currentTime}
-            onSeek={handleSeek}
-            onToggleCutWord={handleToggleCutWord}
-            onAddCommentAtTime={(t, p) => handleAddFeedbackWithSnapshot(t, p)}
-            onSelectPlatform={handleSelectPlatform}
-            sourceVideos={sourceVideos}
-            showLeftPanel={showLeftPanel}
-            showTranscript={showTranscript}
-          />
+        <>
+          {/* DESKTOP LAYOUT (>= 1024px): Full Multi-Column Studio identical to Melvyn Screenshots */}
+          <div className="hidden lg:flex flex-1 overflow-hidden">
+            {/* Left Column 1 (Projects, Platforms, Renders, Videos) & Column 2 (Transcript) */}
+            <LeftSidebar
+              project={selectedProject}
+              projects={projects}
+              onSelectProject={(p) => {
+                setSelectedProject(p);
+                setCurrentTime(0);
+              }}
+              onOpenNewProject={() => setNewProjectModalOpen(true)}
+              onDeleteProject={handleDeleteProject}
+              onImportVideoFile={handleImportVideoFile}
+              currentTime={currentTime}
+              onSeek={handleSeek}
+              onToggleCutWord={handleToggleCutWord}
+              onAddCommentAtTime={(t, p) => handleAddFeedbackWithSnapshot(t, p)}
+              onSelectPlatform={handleSelectPlatform}
+              sourceVideos={sourceVideos}
+              showLeftPanel={showLeftPanel}
+              showTranscript={showTranscript}
+            />
 
-          {/* Center: 9:16 Video Player, Playback Controls & Multi-Track Timeline */}
-          <main className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0c] relative">
-            
-            {/* Player Container (Fits cleanly in available viewport height) */}
-            <div className="flex-1 overflow-hidden relative flex items-center justify-center p-2">
-              <Player916
+            {/* Center: 9:16 Video Player, Playback Controls & Multi-Track Timeline */}
+            <main className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0c] relative">
+              <div className="flex-1 overflow-hidden relative flex items-center justify-center p-2">
+                <Player916
+                  project={selectedProject}
+                  currentTime={currentTime}
+                  isPlaying={isPlaying}
+                  onPause={() => setIsPlaying(false)}
+                  onAddFeedbackWithSnapshot={handleAddFeedbackWithSnapshot}
+                />
+              </div>
+
+              <PlaybackControls
                 project={selectedProject}
                 currentTime={currentTime}
                 isPlaying={isPlaying}
-                onPause={() => setIsPlaying(false)}
-                onAddFeedbackWithSnapshot={handleAddFeedbackWithSnapshot}
+                onTogglePlay={() => setIsPlaying(!isPlaying)}
+                onSeek={handleSeek}
+                playbackSpeed={playbackSpeed}
+                onChangeSpeed={setPlaybackSpeed}
               />
-            </div>
 
-            {/* Playback Controls (Play/Pause, Rewind, Timecode, Speed, Volume) */}
-            <PlaybackControls
+              {showTimeline && (
+                <MultiTrackTimeline
+                  project={selectedProject}
+                  currentTime={currentTime}
+                  onSeek={handleSeek}
+                />
+              )}
+            </main>
+
+            {/* Right: Feedback Manager Sidebar */}
+            <RightSidebar
               project={selectedProject}
               currentTime={currentTime}
-              isPlaying={isPlaying}
-              onTogglePlay={() => setIsPlaying(!isPlaying)}
               onSeek={handleSeek}
-              playbackSpeed={playbackSpeed}
-              onChangeSpeed={setPlaybackSpeed}
+              onAddFeedback={(text, type) => handleAddFeedbackWithSnapshot(currentTime, text, undefined, undefined, type)}
+              onToggleResolveFeedback={handleToggleResolveFeedback}
+              onDeleteFeedback={handleDeleteFeedback}
+              onCopyPrompt={handleCopyPrompt}
+              copiedPrompt={copiedPrompt}
+              showRightPanel={showRightPanel}
             />
+          </div>
 
-            {/* Multi-Track Timeline (MOTION, LAYOUT, SFX, MUSIC, WAVEFORM) */}
-            {showTimeline && (
-              <MultiTrackTimeline
-                project={selectedProject}
-                currentTime={currentTime}
-                onSeek={handleSeek}
-              />
+          {/* MOBILE / TABLET LAYOUT (< 1024px): Dedicated Single-Column Views with Bottom Navigation */}
+          <div className="lg:hidden flex-1 flex flex-col overflow-hidden relative">
+            {mobileTab === 'player' && (
+              <main className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0c] relative">
+                <div className="flex-1 overflow-hidden relative flex items-center justify-center p-2">
+                  <Player916
+                    project={selectedProject}
+                    currentTime={currentTime}
+                    isPlaying={isPlaying}
+                    onPause={() => setIsPlaying(false)}
+                    onAddFeedbackWithSnapshot={handleAddFeedbackWithSnapshot}
+                  />
+                </div>
+
+                <PlaybackControls
+                  project={selectedProject}
+                  currentTime={currentTime}
+                  isPlaying={isPlaying}
+                  onTogglePlay={() => setIsPlaying(!isPlaying)}
+                  onSeek={handleSeek}
+                  playbackSpeed={playbackSpeed}
+                  onChangeSpeed={setPlaybackSpeed}
+                />
+
+                <MultiTrackTimeline
+                  project={selectedProject}
+                  currentTime={currentTime}
+                  onSeek={handleSeek}
+                />
+              </main>
             )}
-          </main>
 
-          {/* Right: Feedback Manager Sidebar */}
-          <RightSidebar
-            project={selectedProject}
-            currentTime={currentTime}
-            onSeek={handleSeek}
-            onAddFeedback={(text, type) => handleAddFeedbackWithSnapshot(currentTime, text, undefined, undefined, type)}
-            onToggleResolveFeedback={handleToggleResolveFeedback}
-            onDeleteFeedback={handleDeleteFeedback}
-            onCopyPrompt={handleCopyPrompt}
-            copiedPrompt={copiedPrompt}
-            showRightPanel={showRightPanel}
-          />
-        </div>
+            {mobileTab === 'transcript' && (
+              <div className="flex-1 overflow-hidden bg-[#111113]">
+                <LeftSidebar
+                  project={selectedProject}
+                  projects={projects}
+                  currentTime={currentTime}
+                  onSeek={(t) => {
+                    handleSeek(t);
+                    setMobileTab('player');
+                  }}
+                  onToggleCutWord={handleToggleCutWord}
+                  onAddCommentAtTime={(t, p) => {
+                    handleAddFeedbackWithSnapshot(t, p);
+                    setMobileTab('feedback');
+                  }}
+                  onSelectPlatform={handleSelectPlatform}
+                  sourceVideos={sourceVideos}
+                  showLeftPanel={false}
+                  showTranscript={true}
+                />
+              </div>
+            )}
+
+            {mobileTab === 'feedback' && (
+              <div className="flex-1 overflow-hidden bg-[#121214]">
+                <RightSidebar
+                  project={selectedProject}
+                  currentTime={currentTime}
+                  onSeek={(t) => {
+                    handleSeek(t);
+                    setMobileTab('player');
+                  }}
+                  onAddFeedback={(text, type) => handleAddFeedbackWithSnapshot(currentTime, text, undefined, undefined, type)}
+                  onToggleResolveFeedback={handleToggleResolveFeedback}
+                  onDeleteFeedback={handleDeleteFeedback}
+                  onCopyPrompt={handleCopyPrompt}
+                  copiedPrompt={copiedPrompt}
+                  showRightPanel={true}
+                />
+              </div>
+            )}
+
+            {mobileTab === 'projects' && (
+              <div className="flex-1 overflow-hidden bg-[#121214]">
+                <LeftSidebar
+                  project={selectedProject}
+                  projects={projects}
+                  onSelectProject={(p) => {
+                    setSelectedProject(p);
+                    setCurrentTime(0);
+                    setMobileTab('player');
+                  }}
+                  onOpenNewProject={() => setNewProjectModalOpen(true)}
+                  onDeleteProject={handleDeleteProject}
+                  onImportVideoFile={handleImportVideoFile}
+                  currentTime={currentTime}
+                  onSeek={handleSeek}
+                  onToggleCutWord={handleToggleCutWord}
+                  onAddCommentAtTime={(t, p) => handleAddFeedbackWithSnapshot(t, p)}
+                  onSelectPlatform={handleSelectPlatform}
+                  sourceVideos={sourceVideos}
+                  showLeftPanel={true}
+                  showTranscript={false}
+                />
+              </div>
+            )}
+
+            {/* Mobile Bottom Navigation Bar */}
+            <nav className="h-14 bg-[#101012] border-t border-zinc-800/90 flex items-center justify-around shrink-0 z-40 select-none">
+              <button
+                onClick={() => setMobileTab('player')}
+                className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition ${
+                  mobileTab === 'player' ? 'text-orange-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Video className="w-4 h-4" />
+                <span className="text-[10px]">Lecteur</span>
+              </button>
+
+              <button
+                onClick={() => setMobileTab('transcript')}
+                className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition ${
+                  mobileTab === 'transcript' ? 'text-orange-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span className="text-[10px]">Transcript</span>
+              </button>
+
+              <button
+                onClick={() => setMobileTab('feedback')}
+                className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg relative transition ${
+                  mobileTab === 'feedback' ? 'text-orange-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <div className="relative">
+                  <MessageSquare className="w-4 h-4" />
+                  {openCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-orange-500 text-black text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                      {openCount}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px]">Retours</span>
+              </button>
+
+              <button
+                onClick={() => setMobileTab('projects')}
+                className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition ${
+                  mobileTab === 'projects' ? 'text-orange-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <Folder className="w-4 h-4" />
+                <span className="text-[10px]">Projets</span>
+              </button>
+            </nav>
+          </div>
+        </>
       )}
 
       {/* 3. MODALS */}
@@ -390,6 +649,20 @@ export default function App() {
         isOpen={chatGptModalOpen}
         onClose={() => setChatGptModalOpen(false)}
         serverUrl={currentServerUrl}
+      />
+
+      {/* New Project & Video Import Modal */}
+      <NewProjectModal
+        isOpen={newProjectModalOpen}
+        onClose={() => setNewProjectModalOpen(false)}
+        onCreateProject={handleCreateProject}
+      />
+
+      {/* Copy Prompt for ChatGPT & Claude Modal */}
+      <CopyPromptModal
+        isOpen={copyPromptModalOpen}
+        onClose={() => setCopyPromptModalOpen(false)}
+        project={selectedProject}
       />
 
       {/* QC Contact Sheet (12 frames) */}
@@ -411,7 +684,7 @@ export default function App() {
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-4 right-4 z-50 bg-zinc-900 border border-zinc-700 text-white text-xs font-medium px-3.5 py-2 rounded-xl shadow-2xl flex items-center gap-2">
+        <div className="fixed bottom-16 lg:bottom-4 right-4 z-50 bg-zinc-900 border border-zinc-700 text-white text-xs font-medium px-3.5 py-2 rounded-xl shadow-2xl flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-orange-500" />
           <span>{toastMessage}</span>
         </div>

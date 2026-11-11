@@ -20,6 +20,8 @@ export const ChatGPTModal: React.FC<ChatGPTModalProps> = ({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [copiedConfig, setCopiedConfig] = useState(false);
+  const [copiedRawJson, setCopiedRawJson] = useState(false);
+  const [copiedReplyToGpt, setCopiedReplyToGpt] = useState(false);
 
   // Tool runner state
   const [selectedTool, setSelectedTool] = useState('studio_status');
@@ -30,6 +32,7 @@ export const ChatGPTModal: React.FC<ChatGPTModalProps> = ({
 
   if (!isOpen) return null;
 
+  const publicSharedUrl = 'https://ais-pre-eacgacwlcnlnaupvxvzucq-79011270395.europe-west2.run.app';
   const openApiUrl = `${serverUrl}/api/openapi.json`;
   const mcpSseUrl = `${serverUrl}/api/mcp/sse`;
   const mcpPostUrl = `${serverUrl}/api/mcp`;
@@ -38,6 +41,19 @@ export const ChatGPTModal: React.FC<ChatGPTModalProps> = ({
     navigator.clipboard.writeText(text);
     setter(true);
     setTimeout(() => setter(false), 2500);
+  };
+
+  const handleCopyRawOpenApiJson = async () => {
+    try {
+      const res = await fetch('/api/openapi.json');
+      const data = await res.json();
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopiedRawJson(true);
+      setTimeout(() => setCopiedRawJson(false), 2500);
+    } catch (e) {
+      // Fallback
+      copyToClipboard(openApiUrl, setCopiedRawJson);
+    }
   };
 
   // Pre-configured tool examples for interactive test
@@ -223,20 +239,45 @@ Règles de travail :
 
               {/* Step-by-Step Instructions */}
               <div className="space-y-4">
-                <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-zinc-800 text-orange-400 flex items-center justify-center font-mono text-[11px]">1</span>
-                  Lien OpenAPI à coller dans ChatGPT
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-zinc-800 text-orange-400 flex items-center justify-center font-mono text-[11px]">1</span>
+                    Connexion aux Actions Custom GPT de ChatGPT
+                  </h3>
+                  <button
+                    onClick={handleCopyRawOpenApiJson}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/20"
+                    title="Copie le schéma OpenAPI JSON complet pour le coller directement dans le champ 'Schema' de l'Action"
+                  >
+                    {copiedRawJson ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedRawJson ? 'Schéma OpenAPI Copié !' : 'Copier Schéma OpenAPI (JSON)'}</span>
+                  </button>
+                </div>
+
+                {/* Important Notice about Cloud Run URL & DNS Resolution */}
+                <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-600/40 text-amber-200 text-xs space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Pourquoi ChatGPT a indiqué une erreur de résolution DNS ?</span>
+                  </div>
+                  <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                    L'URL <code className="bg-black/40 px-1 py-0.5 rounded font-mono text-amber-300">ais-dev-...</code> est l'environnement privé interne. OpenAI ne peut pas la résoudre de l'extérieur. Pour connecter ChatGPT sans erreur :
+                  </p>
+                  <ul className="text-[11px] text-amber-200 list-disc list-inside space-y-1 pl-1">
+                    <li><strong>Méthode Recommandée (100% fiable)</strong> : Cliquez sur <em>"Copier Schéma OpenAPI (JSON)"</em> ci-dessus et collez le contenu directement dans le champ <strong>Schema</strong> de votre Action ChatGPT (aucun besoin de résolution DNS !).</li>
+                    <li><strong>Ou URL Publique</strong> : Utilisez l'URL publique partagée : <code className="bg-black/50 px-1 py-0.5 rounded font-mono text-white">{publicSharedUrl}/api/openapi.json</code></li>
+                  </ul>
+                </div>
 
                 <div className="bg-zinc-900/90 rounded-xl p-3 border border-zinc-800 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 truncate">
-                    <span className="text-[11px] font-mono text-zinc-400">URL du schéma OpenAPI :</span>
+                    <span className="text-[11px] font-mono text-zinc-400">URL Publique OpenAPI :</span>
                     <span className="text-xs font-mono text-emerald-300 truncate font-semibold">
-                      {openApiUrl}
+                      {publicSharedUrl}/api/openapi.json
                     </span>
                   </div>
                   <button
-                    onClick={() => copyToClipboard(openApiUrl, setCopiedUrl)}
+                    onClick={() => copyToClipboard(`${publicSharedUrl}/api/openapi.json`, setCopiedUrl)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium transition shrink-0"
                   >
                     {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -246,21 +287,21 @@ Règles de travail :
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                   <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1">
-                    <span className="font-bold text-white block">Étape A : Créer un GPT</span>
+                    <span className="font-bold text-white block">Étape A : Ouvrir le GPT</span>
                     <p className="text-zinc-400 text-[11px]">
-                      Ouvrez ChatGPT, cliquez sur <em>Explore GPTs</em> &gt; <em>Create</em> &gt; onglet <em>Configure</em>.
+                      Dans ChatGPT, cliquez sur <em>Explore GPTs</em> &gt; Votre GPT (ou <em>Create</em>) &gt; onglet <em>Configure</em>.
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1">
-                    <span className="font-bold text-white block">Étape B : Ajouter une Action</span>
+                    <span className="font-bold text-white block">Étape B : Coller le Schéma</span>
                     <p className="text-zinc-400 text-[11px]">
-                      En bas, cliquez sur <em>Create new action</em>, puis sur <em>Import from URL</em> et collez l'URL ci-dessus.
+                      En bas dans <em>Actions</em>, cliquez sur <em>Create new action</em> et collez le JSON brut dans la grande boîte <em>Schema</em>.
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1">
-                    <span className="font-bold text-white block">Étape C : 15 Commandes Prêtes</span>
+                    <span className="font-bold text-white block">Étape C : 15 Outils Reconnus</span>
                     <p className="text-zinc-400 text-[11px]">
-                      ChatGPT détecte automatiquement les 15 fonctions (studio_status, render_short, write_motion_component...).
+                      ChatGPT valide immédiatement les 15 actions (studio_status, create_short, transcribe, render...).
                     </p>
                   </div>
                 </div>

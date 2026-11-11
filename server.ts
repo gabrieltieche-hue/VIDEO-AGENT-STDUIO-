@@ -12,6 +12,17 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Global CORS Middleware for ChatGPT Actions and MCP clients
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // In-Memory Database for Video Agent Studio VF
 interface WhisperWord {
   id: string;
@@ -247,7 +258,88 @@ const sampleProjects: ShortProject[] = [
       { id: 'w41', word: 'Claude', start: 15.28, end: 15.65, confidence: 0.98 },
       { id: 'w42', word: 'et', start: 15.68, end: 15.8, confidence: 0.99 },
       { id: 'w43', word: 'ChatGPT', start: 15.82, end: 16.4, confidence: 0.98 },
-      { id: 'w44', word: 'interagissent.', start: 16.42, end: 17.2, confidence: 0.97 }
+      { id: 'w44', word: 'interagissent.', start: 16.42, end: 17.2, confidence: 0.97 },
+      { id: 'w45', word: 'ChatGPT', start: 17.4, end: 17.9, confidence: 0.99 },
+      { id: 'w46', word: 'assure', start: 17.95, end: 18.3, confidence: 0.98 },
+      { id: 'w47', word: 'la', start: 18.32, end: 18.45, confidence: 0.99 },
+      { id: 'w48', word: 'direction', start: 18.48, end: 19.1, confidence: 0.98 },
+      { id: 'w49', word: 'artistique,', start: 19.15, end: 19.8, confidence: 0.97 },
+      { id: 'w50', word: 'écrit', start: 20.0, end: 20.35, confidence: 0.98 },
+      { id: 'w51', word: 'les', start: 20.38, end: 20.5, confidence: 0.99 },
+      { id: 'w52', word: 'scripts', start: 20.52, end: 21.1, confidence: 0.98 },
+      { id: 'w53', word: 'et', start: 21.15, end: 21.3, confidence: 0.99 },
+      { id: 'w54', word: 'génère', start: 21.35, end: 21.85, confidence: 0.97 },
+      { id: 'w55', word: 'les', start: 21.88, end: 22.0, confidence: 0.99 },
+      { id: 'w56', word: 'animations.', start: 22.05, end: 22.8, confidence: 0.98 },
+      { id: 'w57', word: 'Le', start: 23.0, end: 23.2, confidence: 0.99 },
+      { id: 'w58', word: 'moteur', start: 23.22, end: 23.65, confidence: 0.98 },
+      { id: 'w59', word: 'local', start: 23.68, end: 24.15, confidence: 0.97 },
+      { id: 'w60', word: 'exécute', start: 24.2, end: 24.75, confidence: 0.98 },
+      { id: 'w61', word: 'le', start: 24.78, end: 24.9, confidence: 0.99 },
+      { id: 'w62', word: 'montage,', start: 24.92, end: 25.5, confidence: 0.98 },
+      { id: 'w63', word: 'synchronise', start: 25.6, end: 26.3, confidence: 0.97 },
+      { id: 'w64', word: 'Whisper', start: 26.35, end: 26.9, confidence: 0.98 },
+      { id: 'w65', word: 'et', start: 26.95, end: 27.1, confidence: 0.99 },
+      { id: 'w66', word: 'produit', start: 27.15, end: 27.6, confidence: 0.98 },
+      { id: 'w67', word: 'les', start: 27.62, end: 27.75, confidence: 0.99 },
+      { id: 'w68', word: 'rendus.', start: 27.78, end: 28.4, confidence: 0.98 },
+      { id: 'w69', word: 'Tu', start: 28.7, end: 28.9, confidence: 0.99 },
+      { id: 'w70', word: 'peux', start: 28.92, end: 29.2, confidence: 0.98 },
+      { id: 'w71', word: 'dessiner', start: 29.25, end: 29.8, confidence: 0.98 },
+      { id: 'w72', word: 'sur', start: 29.85, end: 30.05, confidence: 0.99 },
+      { id: 'w73', word: 'chaque', start: 30.1, end: 30.45, confidence: 0.98 },
+      { id: 'w74', word: 'image', start: 30.48, end: 30.9, confidence: 0.97 },
+      { id: 'w75', word: 'ou', start: 30.95, end: 31.1, confidence: 0.99 },
+      { id: 'w76', word: 'inspecter', start: 31.15, end: 31.8, confidence: 0.98 },
+      { id: 'w77', word: 'n\'importe', start: 31.85, end: 32.3, confidence: 0.97 },
+      { id: 'w78', word: 'quel', start: 32.32, end: 32.5, confidence: 0.99 },
+      { id: 'w79', word: 'calque.', start: 32.52, end: 33.1, confidence: 0.98 },
+      { id: 'w80', word: 'L\'IA', start: 33.4, end: 33.7, confidence: 0.99 },
+      { id: 'w81', word: 'reçoit', start: 33.75, end: 34.2, confidence: 0.98 },
+      { id: 'w82', word: 'tes', start: 34.22, end: 34.4, confidence: 0.99 },
+      { id: 'w83', word: 'retours', start: 34.45, end: 35.0, confidence: 0.98 },
+      { id: 'w84', word: 'horodatés', start: 35.05, end: 35.8, confidence: 0.97 },
+      { id: 'w85', word: 'et', start: 35.85, end: 36.0, confidence: 0.99 },
+      { id: 'w86', word: 'corrige', start: 36.05, end: 36.55, confidence: 0.98 },
+      { id: 'w87', word: 'le', start: 36.58, end: 36.7, confidence: 0.99 },
+      { id: 'w88', word: 'code', start: 36.72, end: 37.15, confidence: 0.98 },
+      { id: 'w89', word: 'en', start: 37.18, end: 37.35, confidence: 0.99 },
+      { id: 'w90', word: 'direct.', start: 37.38, end: 38.0, confidence: 0.98 },
+      { id: 'w91', word: 'Plus', start: 38.4, end: 38.75, confidence: 0.98 },
+      { id: 'w92', word: 'besoin', start: 38.78, end: 39.2, confidence: 0.99 },
+      { id: 'w93', word: 'de', start: 39.22, end: 39.38, confidence: 0.99 },
+      { id: 'w94', word: 'passer', start: 39.4, end: 39.85, confidence: 0.98 },
+      { id: 'w95', word: 'des', start: 39.88, end: 40.05, confidence: 0.99 },
+      { id: 'w96', word: 'journées', start: 40.1, end: 40.7, confidence: 0.98 },
+      { id: 'w97', word: 'entières', start: 40.75, end: 41.35, confidence: 0.97 },
+      { id: 'w98', word: 'sur', start: 41.4, end: 41.6, confidence: 0.99 },
+      { id: 'w99', word: 'Premiere', start: 41.65, end: 42.25, confidence: 0.98 },
+      { id: 'w100', word: 'ou', start: 42.28, end: 42.45, confidence: 0.99 },
+      { id: 'w101', word: 'CapCut.', start: 42.5, end: 43.1, confidence: 0.98 },
+      { id: 'w102', word: 'Chaque', start: 43.4, end: 43.8, confidence: 0.98 },
+      { id: 'w103', word: 'semaine,', start: 43.85, end: 44.45, confidence: 0.97 },
+      { id: 'w104', word: 'des', start: 44.5, end: 44.68, confidence: 0.99 },
+      { id: 'w105', word: 'dizaines', start: 44.7, end: 45.2, confidence: 0.98 },
+      { id: 'w106', word: 'de', start: 45.22, end: 45.38, confidence: 0.99 },
+      { id: 'w107', word: 'Shorts', start: 45.4, end: 46.0, confidence: 0.98 },
+      { id: 'w108', word: 'sont', start: 46.05, end: 46.3, confidence: 0.99 },
+      { id: 'w109', word: 'créés', start: 46.35, end: 46.85, confidence: 0.98 },
+      { id: 'w110', word: 'et', start: 46.9, end: 47.05, confidence: 0.99 },
+      { id: 'w111', word: 'validés', start: 47.1, end: 47.7, confidence: 0.98 },
+      { id: 'w112', word: 'en', start: 47.75, end: 47.95, confidence: 0.99 },
+      { id: 'w113', word: 'quelques', start: 48.0, end: 48.5, confidence: 0.98 },
+      { id: 'w114', word: 'clics.', start: 48.55, end: 49.1, confidence: 0.98 },
+      { id: 'w115', word: 'Connecte', start: 49.4, end: 50.0, confidence: 0.98 },
+      { id: 'w116', word: 'ton', start: 50.05, end: 50.25, confidence: 0.99 },
+      { id: 'w117', word: 'ChatGPT', start: 50.3, end: 50.95, confidence: 0.98 },
+      { id: 'w118', word: 'dès', start: 51.0, end: 51.25, confidence: 0.99 },
+      { id: 'w119', word: 'maintenant', start: 51.3, end: 52.0, confidence: 0.98 },
+      { id: 'w120', word: 'et', start: 52.05, end: 52.2, confidence: 0.99 },
+      { id: 'w121', word: 'lance', start: 52.25, end: 52.75, confidence: 0.98 },
+      { id: 'w122', word: 'ton', start: 52.8, end: 53.0, confidence: 0.99 },
+      { id: 'w123', word: 'premier', start: 53.05, end: 53.65, confidence: 0.98 },
+      { id: 'w124', word: 'rendu', start: 53.7, end: 54.2, confidence: 0.98 },
+      { id: 'w125', word: 'vidéo !', start: 54.25, end: 55.4, confidence: 0.97 }
     ],
     motionTrack: [
       { id: 'm1', componentId: 'comp-chart', name: 'Courbe Vitesse 200 FPS', start: 0.5, end: 8.5, type: 'chart' },
@@ -661,46 +753,63 @@ function executeToolCall(toolName: string, args: any) {
     }
 
     case 'create_short_project': {
+      const dur = Number(args.duration) || 45.0;
+      const scriptText = args.script || args.title || 'Voici un nouveau short monté automatiquement par l\'agent IA avec sous-titres dynamiques et synchronisation Whisper mot par mot.';
+      const words = scriptText.trim().split(/\s+/).filter(Boolean);
+      const totalWords = words.length;
+      
+      const generatedTranscript: WhisperWord[] = words.map((w: string, idx: number) => {
+        const start = Number(((idx / totalWords) * dur * 0.95).toFixed(2));
+        const end = Number((((idx + 0.9) / totalWords) * dur * 0.95).toFixed(2));
+        return {
+          id: `w-${idx + 1}`,
+          word: w,
+          start,
+          end,
+          confidence: 0.98
+        };
+      });
+
       const newProj: ShortProject = {
         id: `proj-${Date.now()}`,
-        slug: args.slug,
-        title: args.title,
-        mode: args.mode,
+        slug: args.slug || `short-${Date.now()}`,
+        title: args.title || 'Nouveau Short IA',
+        mode: args.mode || 'split_screen_clips',
         platform: args.platform || 'instagram',
-        status: 'draft',
-        duration: 45.0,
-        fps: 30,
+        status: 'ready',
+        duration: dur,
+        fps: args.fps || 30,
         resolution: { width: 1080, height: 1920 },
-        sourceVideoName: args.source_video || 'interview-melvyn-ia-take04.mp4',
+        sourceVideoName: args.source_video || args.filename || 'rush-personnalise.mp4',
+        speakerVideoUrl: args.speaker_video_url || args.source_video_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
         currentVersion: 'v1',
         versions: [
-          { version: 'v1', createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16), status: 'current', duration: 45.0, fps: 30, notes: 'Projet créé via ChatGPT / MCP' }
+          { version: 'v1', createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16), status: 'current', duration: dur, fps: args.fps || 30, notes: 'Projet créé via ChatGPT / Interface' }
         ],
-        transcript: [
-          { id: 'w1', word: 'Introduction', start: 0.1, end: 0.8, confidence: 0.99 },
-          { id: 'w2', word: 'du', start: 0.85, end: 1.1, confidence: 0.99 },
-          { id: 'w3', word: 'nouveau', start: 1.15, end: 1.6, confidence: 0.98 },
-          { id: 'w4', word: 'projet !', start: 1.65, end: 2.2, confidence: 0.99 }
-        ],
+        transcript: generatedTranscript,
         motionTrack: [
-          { id: 'm1', componentId: 'comp-chart', name: 'Intro Graphique', start: 0, end: 5, type: 'chart' }
+          { id: 'm1', componentId: 'comp-chart', name: 'Intro Données', start: 0, end: Math.min(10, dur / 3), type: 'chart' },
+          { id: 'm2', componentId: 'comp-rocket', name: 'Animation Clé', start: Math.min(10.1, dur / 3), end: Math.min(25, (dur * 2) / 3), type: 'rocket' },
+          { id: 'm3', componentId: 'comp-neural', name: 'Réseau Final', start: Math.min(25.1, (dur * 2) / 3), end: dur, type: 'network' }
         ],
         layoutTrack: [
-          { id: 'l1', layout: args.mode === 'split_screen_clips' ? 'split' : 'fullscreen', start: 0, end: 45.0 }
+          { id: 'l1', layout: args.mode === 'split_screen_clips' ? 'split' : 'fullscreen', start: 0, end: dur }
         ],
         sfxTrack: [
-          { id: 's1', sound: 'whoosh', start: 0.2, volume: 0.8 }
+          { id: 's1', sound: 'whoosh', start: 0.2, volume: 0.8 },
+          { id: 's2', sound: 'pop', start: Math.min(5, dur / 4), volume: 0.7 },
+          { id: 's3', sound: 'click', start: Math.min(15, dur / 2), volume: 0.7 }
         ],
         musicTrack: { trackName: 'ambient-tech.mp3', volume: 0.15, ducking: true },
         feedbacks: [],
         motionComponents: { ...initialMotionComponents },
         contactSheet: Array.from({ length: 12 }, (_, i) => ({
           frameIndex: i + 1,
-          timestamp: Number(((i / 11) * 45).toFixed(2)),
-          timeFormatted: `00:${((i / 11) * 45).toFixed(1)}s`,
+          timestamp: Number(((i / 11) * dur).toFixed(2)),
+          timeFormatted: `00:${((i / 11) * dur).toFixed(1)}s`,
           title: `Frame #${i + 1}`,
           qcCheck: 'pass',
-          notes: 'Plan initial'
+          notes: 'Plan vérifié'
         })),
         styleProfile: {
           name: 'Default Clean VF',
@@ -712,13 +821,16 @@ function executeToolCall(toolName: string, args: any) {
           visualBeatsTarget: 20
         }
       };
+
       sampleProjects.unshift(newProj);
       return {
         success: true,
         projectId: newProj.id,
+        project: newProj,
         slug: newProj.slug,
         mode: newProj.mode,
-        message: `Projet "${newProj.title}" initialisé avec succès.`
+        wordsCount: generatedTranscript.length,
+        message: `Projet "${newProj.title}" créé avec succès (${generatedTranscript.length} mots synchronisés).`
       };
     }
 
@@ -1042,7 +1154,15 @@ app.get('/api/openapi.json', (req: Request, res: Response) => {
     servers: [
       {
         url: serverUrl,
-        description: 'Serveur Video Agent Studio'
+        description: 'Serveur Actuel'
+      },
+      {
+        url: 'https://ais-pre-eacgacwlcnlnaupvxvzucq-79011270395.europe-west2.run.app',
+        description: 'Serveur Public Cloud Run (Shared App)'
+      },
+      {
+        url: 'http://localhost:3000',
+        description: 'Moteur Local ARM64 (localhost)'
       }
     ],
     paths: {
@@ -1296,6 +1416,150 @@ app.get('/api/openapi.json', (req: Request, res: Response) => {
             }
           }
         }
+      },
+      '/api/studio/projects/{id}/feedbacks': {
+        get: {
+          operationId: 'list_feedbacks',
+          summary: 'Lister les retours et commentaires d\'un projet',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Liste des retours',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        },
+        post: {
+          operationId: 'add_feedback',
+          summary: 'Ajouter un retour horodaté sur la vidéo',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['text'],
+                  properties: {
+                    timestamp: { type: 'number' },
+                    timeFormatted: { type: 'string' },
+                    text: { type: 'string' },
+                    targetElement: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Feedback ajouté',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/videos/download': {
+        post: {
+          operationId: 'download_source_video',
+          summary: 'Télécharger ou importer une vidéo source',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['url'],
+                  properties: {
+                    url: { type: 'string' },
+                    filename: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Vidéo importée',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/components/{name}/capture': {
+        post: {
+          operationId: 'capture_motion_component',
+          summary: 'Capturer un composant motion en vidéo WebCodecs',
+          parameters: [
+            { name: 'name', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    duration: { type: 'number', default: 3 }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Capture terminée',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/jobs/{id}': {
+        get: {
+          operationId: 'job_status',
+          summary: 'Vérifier l\'avancement d\'une tâche de rendu en arrière-plan',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } }
+          ],
+          responses: {
+            '200': {
+              description: 'Statut de la tâche',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
+      },
+      '/api/studio/styles': {
+        post: {
+          operationId: 'save_style_profile',
+          summary: 'Enregistrer une charte graphique (couleurs, polices, DA)',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string' },
+                    accent_color: { type: 'string' },
+                    font_family: { type: 'string' },
+                    text_color: { type: 'string' },
+                    card_bg: { type: 'string' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: 'Style enregistré',
+              content: { 'application/json': { schema: { type: 'object' } } }
+            }
+          }
+        }
       }
     }
   };
@@ -1333,6 +1597,43 @@ app.get('/api/studio/projects/:id', (req: Request, res: Response) => {
 app.post('/api/studio/projects', (req: Request, res: Response) => {
   const result = executeToolCall('create_short_project', req.body);
   return res.json(result);
+});
+
+app.put('/api/studio/projects/:id', (req: Request, res: Response) => {
+  const proj = sampleProjects.find(p => p.id === req.params.id || p.slug === req.params.id);
+  if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
+  
+  if (req.body.title) proj.title = req.body.title;
+  if (req.body.speakerVideoUrl) proj.speakerVideoUrl = req.body.speakerVideoUrl;
+  if (req.body.sourceVideoName) proj.sourceVideoName = req.body.sourceVideoName;
+  if (req.body.platform) proj.platform = req.body.platform;
+  if (req.body.mode) proj.mode = req.body.mode;
+  if (req.body.transcript) proj.transcript = req.body.transcript;
+  if (req.body.duration) proj.duration = Number(req.body.duration);
+
+  return res.json({ success: true, project: proj });
+});
+
+app.delete('/api/studio/projects/:id', (req: Request, res: Response) => {
+  const index = sampleProjects.findIndex(p => p.id === req.params.id || p.slug === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'Projet introuvable' });
+  sampleProjects.splice(index, 1);
+  return res.json({ success: true, message: 'Projet supprimé' });
+});
+
+app.post('/api/studio/videos', (req: Request, res: Response) => {
+  const { name, url, duration, resolution, sizeMb } = req.body;
+  const newVid = {
+    id: `take-${Date.now()}`,
+    name: name || `rush-${Date.now()}.mp4`,
+    duration: Number(duration) || 60,
+    resolution: resolution || '1080x1920',
+    sizeMb: Number(sizeMb) || 45.0,
+    recordedAt: new Date().toISOString().split('T')[0],
+    url: url || ''
+  };
+  availableSourceVideos.unshift(newVid);
+  return res.json({ success: true, video: newVid });
 });
 
 app.post('/api/studio/projects/:id/transcribe', (req: Request, res: Response) => {

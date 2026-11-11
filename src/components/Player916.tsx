@@ -4,7 +4,7 @@ import {
   Sparkles, CheckCircle2, TrendingUp, BarChart3,
   Rocket, ArrowUpRight, Award, Plus, Layers
 } from 'lucide-react';
-import { ShortProject } from '../types/studio';
+import { ShortProject, WhisperWord } from '../types/studio';
 
 interface Player916Props {
   project: ShortProject;
@@ -28,6 +28,7 @@ export const Player916: React.FC<Player916Props> = ({
   const [drawColor, setDrawColor] = useState('#FF6B00');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoElemRef = useRef<HTMLVideoElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawnSomething, setHasDrawnSomething] = useState(false);
   const [drawHistory, setDrawHistory] = useState<ImageData[]>([]);
@@ -44,20 +45,56 @@ export const Player916: React.FC<Player916Props> = ({
     instruction: string;
   } | null>(null);
 
-  // Active elements
+  // Sync real video tag if present
+  const isVideoSource = project.speakerVideoUrl?.includes('.mp4') || 
+                        project.speakerVideoUrl?.includes('.webm') || 
+                        project.speakerVideoUrl?.startsWith('blob:');
+
+  useEffect(() => {
+    if (videoElemRef.current && isVideoSource) {
+      if (Math.abs(videoElemRef.current.currentTime - currentTime) > 0.3) {
+        videoElemRef.current.currentTime = currentTime;
+      }
+      if (isPlaying && videoElemRef.current.paused) {
+        videoElemRef.current.play().catch(() => {});
+      } else if (!isPlaying && !videoElemRef.current.paused) {
+        videoElemRef.current.pause();
+      }
+    }
+  }, [currentTime, isPlaying, isVideoSource]);
+
+  // Active elements in motion track
   const activeMotion = project.motionTrack.find(
     m => currentTime >= m.start && currentTime <= m.end
   );
 
-  // Active word in transcript
-  const activeWordIdx = project.transcript.findIndex(
+  // ROCK-SOLID SUBTITLE SYNCHRONIZATION ALGORITHM:
+  // 1. Find the current or most recent spoken word without resetting to 0 during silence gaps
+  const transcript = project.transcript || [];
+  let currentWordIdx = transcript.findIndex(
     w => currentTime >= w.start && currentTime <= w.end
   );
-  const activeWord = project.transcript[activeWordIdx];
 
-  const subtitleWords = activeWordIdx !== -1 
-    ? project.transcript.slice(Math.max(0, activeWordIdx - 1), Math.min(project.transcript.length, activeWordIdx + 2))
-    : project.transcript.slice(0, 3);
+  if (currentWordIdx === -1) {
+    // If between words, find the last word that has started
+    for (let i = transcript.length - 1; i >= 0; i--) {
+      if (transcript[i].start <= currentTime) {
+        currentWordIdx = i;
+        break;
+      }
+    }
+  }
+
+  // Safe fallback if before the first word
+  if (currentWordIdx === -1 && transcript.length > 0) {
+    currentWordIdx = 0;
+  }
+
+  const activeWord = transcript[currentWordIdx];
+
+  // 2. Generate a 3 to 4 word window burst that stays stable and highlights the active word
+  const burstStart = Math.floor(currentWordIdx / 3) * 3;
+  const subtitleWords = transcript.slice(burstStart, burstStart + 3);
 
   // Drawing Canvas logic
   useEffect(() => {
@@ -180,115 +217,45 @@ export const Player916: React.FC<Player916Props> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-2 relative overflow-hidden select-none">
+    <div className="w-full h-full flex flex-col items-center justify-center relative select-none">
       
-      {/* Floating Draw / Inspect Toolbar (above video) */}
-      <div className="mb-2 bg-[#18181b]/95 backdrop-blur-md border border-zinc-700/80 rounded-xl px-3 py-1 flex items-center gap-2.5 shadow-xl z-20 shrink-0">
-        <button
-          onClick={() => setActiveTool(activeTool === 'inspect' ? 'normal' : 'inspect')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-            activeTool === 'inspect'
-              ? 'bg-orange-500 text-white shadow-md'
-              : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
-          }`}
-          title="Inspecter les calques (Touche V)"
-        >
-          <MousePointer className="w-3.5 h-3.5" />
-          <span>Inspect V</span>
-        </button>
-
-        <button
-          onClick={() => {
-            if (activeTool === 'draw') {
-              setActiveTool('normal');
-            } else {
-              onPause();
-              setActiveTool('draw');
-            }
-          }}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-            activeTool === 'draw'
-              ? 'bg-orange-500 text-white shadow-md'
-              : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
-          }`}
-          title="Dessiner sur la frame (Touche P)"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-          <span>Draw P</span>
-        </button>
-
-        {activeTool === 'draw' && (
-          <div className="flex items-center gap-1.5 pl-2 border-l border-zinc-700">
-            {['#FF6B00', '#EF4444', '#FACC15', '#22C55E', '#38BDF8'].map(c => (
-              <button
-                key={c}
-                onClick={() => setDrawColor(c)}
-                style={{ backgroundColor: c }}
-                className={`w-3.5 h-3.5 rounded-full transition transform ${
-                  drawColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-80'
-                }`}
-              />
-            ))}
-
-            <button onClick={undoDrawing} className="p-1 rounded text-zinc-400 hover:text-white ml-1">
-              <Undo2 className="w-3 h-3" />
-            </button>
-            <button onClick={clearDrawing} className="p-1 rounded text-zinc-400 hover:text-red-400">
-              <Trash2 className="w-3 h-3" />
-            </button>
-
-            {hasDrawnSomething && (
-              <button
-                onClick={saveDrawingFeedback}
-                className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold ml-1.5 shadow"
-              >
-                <Check className="w-3 h-3" />
-                <span>Attacher</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 9:16 VERTICAL VIDEO PLAYER CONTAINER (Clean borderless aesthetic like Melvyn) */}
+      {/* 9:16 VERTICAL VIDEO PLAYER CONTAINER (Scales smoothly to fit available height) */}
       <div 
         ref={containerRef}
         onMouseMove={handleInspectMouseMove}
         onClick={handleInspectClick}
-        className="relative bg-black rounded-2xl overflow-hidden border border-zinc-800/90 shadow-2xl transition-all duration-150 flex flex-col justify-between"
+        className="relative bg-black rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl transition-all duration-150 flex flex-col justify-between my-auto"
         style={{
           aspectRatio: '9/16',
           height: '100%',
-          maxHeight: 'min(calc(100vh - 290px), 580px)',
-          minHeight: '360px'
+          maxHeight: 'min(calc(100vh - 220px), 560px)',
+          width: 'auto'
         }}
       >
         {/* ============================================================== */}
-        {/* MODE B: SPLIT-SCREEN CLIPS (Matching Melvyn's Screenshots 3, 4, 8, 10) */}
+        {/* MODE B: SPLIT-SCREEN CLIPS (58% Top Motion + Centered Captions + 42% Bottom Video) */}
         {/* ============================================================== */}
         {project.mode === 'split_screen_clips' ? (
           <>
             {/* TOP HALF: 58% Animated Infographics, Cards, Badges */}
-            <div className="h-[58%] w-full bg-[#151518] p-3 flex flex-col justify-between relative overflow-hidden border-b border-zinc-800/80">
+            <div className="h-[58%] w-full bg-[#131316] p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-zinc-800/80">
               
-              {/* Top Claude Badge from Screenshot 3 & 8 */}
-              <div className="flex items-center justify-center z-10 pt-1">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white text-black shadow-lg text-[11px] font-bold tracking-tight">
+              {/* Top Claude Badge */}
+              <div className="flex items-center justify-center z-10 pt-0.5">
+                <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white text-black shadow-md text-[10px] font-bold tracking-tight">
                   <span className="text-orange-500">✨</span>
                   <span>Monter avec <span className="text-orange-600">Claude</span></span>
                 </div>
               </div>
 
-              {/* Dynamic Animated Motion Content (Reels cards, Checklist, or Stats) */}
+              {/* Dynamic Animated Motion Content */}
               <div className="flex-1 flex flex-col items-center justify-center z-10 py-1">
-                
-                {/* Scene A: 3 Floating Phone Cards with follower stats (Screenshot 8 & 10) */}
                 {currentTime < 18 ? (
+                  /* Scene A: 3 Floating Phone Cards with follower stats */
                   <div className="relative w-full flex items-center justify-center gap-1.5 py-1">
-                    {/* Card 1 */}
-                    <div className="w-20 bg-zinc-900 border border-zinc-700/80 rounded-xl p-1.5 shadow-xl rotate-[-8deg] flex flex-col justify-between h-28 transform transition-transform hover:scale-105">
+                    <div className="w-18 bg-zinc-900 border border-zinc-700/80 rounded-xl p-1.5 shadow-xl rotate-[-8deg] flex flex-col justify-between h-24">
                       <div className="flex items-center gap-1">
-                        <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                        <div className="w-2 h-2 rounded-full bg-orange-500" />
                         <span className="text-[7px] text-zinc-400">@studio.leo</span>
                       </div>
                       <span className="text-[8px] font-black text-white leading-tight">
@@ -297,22 +264,20 @@ export const Player916: React.FC<Player916Props> = ({
                       <span className="text-[7px] font-mono text-zinc-400">▶ 1,2 M</span>
                     </div>
 
-                    {/* Card 2 (Center) */}
-                    <div className="w-22 bg-zinc-900 border-2 border-orange-500/80 rounded-xl p-1.5 shadow-2xl z-10 flex flex-col justify-between h-30 scale-105">
+                    <div className="w-20 bg-zinc-900 border-2 border-orange-500/80 rounded-xl p-1.5 shadow-2xl z-10 flex flex-col justify-between h-26 scale-105">
                       <div className="flex items-center gap-1">
-                        <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                        <div className="w-2 h-2 rounded-full bg-purple-500" />
                         <span className="text-[7px] text-zinc-400">@mila.cuts</span>
                       </div>
-                      <span className="text-[9px] font-black text-white leading-tight">
+                      <span className="text-[8px] font-black text-white leading-tight">
                         J'ai viré mon monteur
                       </span>
                       <span className="text-[8px] font-mono text-orange-400 font-bold">▶ 860 k</span>
                     </div>
 
-                    {/* Card 3 */}
-                    <div className="w-20 bg-zinc-900 border border-zinc-700/80 rounded-xl p-1.5 shadow-xl rotate-[8deg] flex flex-col justify-between h-28 transform transition-transform hover:scale-105">
+                    <div className="w-18 bg-zinc-900 border border-zinc-700/80 rounded-xl p-1.5 shadow-xl rotate-[8deg] flex flex-col justify-between h-24">
                       <div className="flex items-center gap-1">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
                         <span className="text-[7px] text-zinc-400">@tom.ai</span>
                       </div>
                       <span className="text-[8px] font-black text-white leading-tight">
@@ -322,18 +287,18 @@ export const Player916: React.FC<Player916Props> = ({
                     </div>
                   </div>
                 ) : (
-                  /* Scene B: Checklist Box from Screenshot 4 (✓ prompts, ✓ étapes, ✓ outils) */
-                  <div className="w-full max-w-[210px] bg-zinc-900/90 border border-zinc-700 rounded-2xl p-2.5 shadow-2xl space-y-1.5">
-                    <div className="flex items-center gap-2 p-1.5 rounded-lg bg-zinc-800 text-white text-[11px] font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  /* Scene B: Checklist Box (✓ prompts, ✓ étapes, ✓ outils) */
+                  <div className="w-full max-w-[190px] bg-zinc-900/95 border border-zinc-700 rounded-xl p-2 shadow-xl space-y-1">
+                    <div className="flex items-center gap-1.5 p-1 rounded-md bg-zinc-800 text-white text-[10px] font-bold">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
                       <span>prompts</span>
                     </div>
-                    <div className="flex items-center gap-2 p-1.5 rounded-lg bg-zinc-800 text-white text-[11px] font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <div className="flex items-center gap-1.5 p-1 rounded-md bg-zinc-800 text-white text-[10px] font-bold">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
                       <span>étapes</span>
                     </div>
-                    <div className="flex items-center gap-2 p-1.5 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-300 text-[11px] font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    <div className="flex items-center gap-1.5 p-1 rounded-md bg-orange-500/20 border border-orange-500/40 text-orange-300 text-[10px] font-bold">
+                      <CheckCircle2 className="w-3 h-3 text-orange-400 shrink-0" />
                       <span>outils</span>
                     </div>
                   </div>
@@ -346,17 +311,17 @@ export const Player916: React.FC<Player916Props> = ({
               </div>
             </div>
 
-            {/* CENTER DIVIDER: High-contrast centered subtitles */}
-            <div className="relative z-30 -my-3 px-3 py-1 flex items-center justify-center">
-              <div className="bg-black/95 backdrop-blur-md border border-orange-500/40 rounded-xl px-3 py-1.5 shadow-2xl flex items-center gap-1.5 max-w-[250px] text-center">
+            {/* CENTER DIVIDER: High-contrast centered subtitles SYNCHRONIZED mot-par-mot */}
+            <div className="relative z-30 -my-3 px-2 flex items-center justify-center">
+              <div className="bg-black/95 backdrop-blur-md border border-orange-500/40 rounded-xl px-3 py-1.5 shadow-2xl flex items-center gap-1.5 max-w-[260px] text-center min-h-[36px]">
                 {subtitleWords.map((item) => {
                   const isWordActive = activeWord?.id === item.id;
                   return (
                     <span
                       key={item.id}
-                      className={`font-black text-xs uppercase tracking-tight transition-all duration-100 ${
+                      className={`font-black text-xs uppercase tracking-tight transition-all duration-75 ${
                         isWordActive
-                          ? 'text-[#FF6B00] scale-110 drop-shadow-[0_0_8px_rgba(255,107,0,0.8)]'
+                          ? 'text-[#FF6B00] scale-110 drop-shadow-[0_0_10px_rgba(255,107,0,0.9)]'
                           : 'text-white'
                       }`}
                     >
@@ -367,16 +332,27 @@ export const Player916: React.FC<Player916Props> = ({
               </div>
             </div>
 
-            {/* BOTTOM HALF: 42% Speaker Video (Presenter like Melvyn in screenshots) */}
+            {/* BOTTOM HALF: 42% Speaker Video (Real Video tag if video file, or Presenter Image) */}
             <div className="h-[42%] w-full relative bg-zinc-950 overflow-hidden flex items-center justify-center">
-              <img
-                src={project.speakerVideoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80'}
-                alt="Intervenant"
-                className="w-full h-full object-cover object-center filter contrast-105"
-              />
+              {isVideoSource ? (
+                <video
+                  ref={videoElemRef}
+                  src={project.speakerVideoUrl}
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img
+                  src={project.speakerVideoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80'}
+                  alt="Rush Intervenant"
+                  className="w-full h-full object-cover object-center filter contrast-105"
+                />
+              )}
+
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
               
-              <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-[8px] text-zinc-300 font-mono">
+              <div className="absolute bottom-1.5 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm text-[8px] text-zinc-300 font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span>Intervenant 42%</span>
               </div>
@@ -399,7 +375,7 @@ export const Player916: React.FC<Player916Props> = ({
                 <BarChart3 className="w-8 h-8 text-white" />
               </div>
               <div className="text-center">
-                <span className="text-xl font-black text-white uppercase block">
+                <span className="text-lg font-black text-white uppercase block">
                   106 SECONDES ?
                 </span>
                 <span className="text-xs text-cyan-400 font-mono">
@@ -408,7 +384,8 @@ export const Player916: React.FC<Player916Props> = ({
               </div>
             </div>
 
-            <div className="z-20 bg-black/90 rounded-xl p-2 border border-zinc-800 text-center">
+            {/* Subtitles on Bottom for Faceless */}
+            <div className="z-20 bg-black/90 rounded-xl p-2 border border-zinc-800 text-center min-h-[38px] flex items-center justify-center">
               <div className="flex items-center justify-center gap-1.5">
                 {subtitleWords.map((item) => (
                   <span
@@ -457,14 +434,14 @@ export const Player916: React.FC<Player916Props> = ({
 
       {/* Inspect Popup Dialog when user clicks an inspected element */}
       {inspectModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#18181b] border border-zinc-700 rounded-2xl w-full max-w-md p-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800 mb-3">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#18181b] border border-zinc-700 rounded-2xl w-full max-w-sm p-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800 mb-2.5">
               <span className="text-xs font-bold text-white">Ajouter un retour sur cet élément</span>
               <button onClick={() => setInspectModal(null)} className="text-zinc-400 hover:text-white text-xs">✕</button>
             </div>
 
-            <div className="bg-zinc-900 rounded-lg p-2 text-xs font-mono text-orange-300 mb-3">
+            <div className="bg-zinc-900 rounded-lg p-2 text-xs font-mono text-orange-300 mb-2.5 truncate">
               {inspectModal.elementName}
             </div>
 
@@ -473,7 +450,7 @@ export const Player916: React.FC<Player916Props> = ({
               value={inspectModal.instruction}
               onChange={(e) => setInspectModal({ ...inspectModal, instruction: e.target.value })}
               placeholder="Ex: Agrandis la police de 15% et passe en orange..."
-              className="w-full h-20 bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-orange-500 mb-3"
+              className="w-full h-20 bg-zinc-950 border border-zinc-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-orange-500 mb-3 resize-none"
             />
 
             <div className="flex justify-end gap-2">
