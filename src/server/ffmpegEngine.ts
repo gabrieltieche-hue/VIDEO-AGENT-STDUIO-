@@ -22,7 +22,6 @@ export interface RenderJob {
   completedAt?: string;
 }
 
-// Probing video file with ffprobe
 export function probeVideo(filePath: string) {
   try {
     const cmd = `ffprobe -v error -show_entries format=duration,size,bit_rate -show_entries stream=width,height,r_frame_rate,codec_name -of json "${filePath}"`;
@@ -65,7 +64,6 @@ export function probeVideo(filePath: string) {
   }
 }
 
-// Extract JPEG thumbnail from video
 export function extractThumbnail(videoPath: string, outputPath: string, timeSec = 1.0): boolean {
   try {
     execSync(`ffmpeg -y -ss ${timeSec} -i "${videoPath}" -vframes 1 -q:v 2 "${outputPath}" 2>/dev/null`);
@@ -75,7 +73,6 @@ export function extractThumbnail(videoPath: string, outputPath: string, timeSec 
   }
 }
 
-// Generate 12-frame contact sheet from video
 export function generateContactSheet(videoPath: string, outputPath: string, durationSec = 30.0): boolean {
   try {
     const interval = Math.max(0.2, durationSec / 12).toFixed(2);
@@ -86,7 +83,6 @@ export function generateContactSheet(videoPath: string, outputPath: string, dura
   }
 }
 
-// Scan takes/ directory and get real videos
 export function getAvailableTakes(): SourceVideo[] {
   if (!fs.existsSync(TAKES_DIR)) return [];
   const files = fs.readdirSync(TAKES_DIR);
@@ -120,10 +116,9 @@ export function getAvailableTakes(): SourceVideo[] {
   return videos;
 }
 
-// Save uploaded video (base64 or binary buffer) to takes/
 export function saveUploadedVideo(filename: string, dataBase64OrBuffer: string | Buffer): SourceVideo {
   if (!fs.existsSync(TAKES_DIR)) fs.mkdirSync(TAKES_DIR, { recursive: true });
-  
+
   const cleanName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
   const targetPath = path.join(TAKES_DIR, cleanName);
 
@@ -153,7 +148,6 @@ export function saveUploadedVideo(filename: string, dataBase64OrBuffer: string |
   };
 }
 
-// Download remote video to takes/
 export async function downloadRemoteVideo(url: string, filename?: string): Promise<SourceVideo> {
   if (!fs.existsSync(TAKES_DIR)) fs.mkdirSync(TAKES_DIR, { recursive: true });
 
@@ -186,7 +180,6 @@ export async function downloadRemoteVideo(url: string, filename?: string): Promi
   };
 }
 
-// Job Storage
 export function saveJob(job: RenderJob) {
   if (!fs.existsSync(JOBS_DIR)) fs.mkdirSync(JOBS_DIR, { recursive: true });
   fs.writeFileSync(path.join(JOBS_DIR, `${job.id}.json`), JSON.stringify(job, null, 2), 'utf-8');
@@ -202,7 +195,6 @@ export function getJob(jobId: string): RenderJob | null {
   }
 }
 
-// Real Video Render Pipeline with FFmpeg
 export function startRenderShort(
   project: ShortProject,
   version: string,
@@ -232,7 +224,6 @@ export function startRenderShort(
 
   saveJob(job);
 
-  // Check for source take video
   const takes = getAvailableTakes();
   let sourceTakePath: string | null = null;
 
@@ -247,7 +238,6 @@ export function startRenderShort(
     sourceTakePath = takes[0].path || null;
   }
 
-  // FFmpeg arguments
   const renderFps = options.fps || project.fps || 30;
   const dur = Math.min(project.duration || 30, 60);
   const startTime = Date.now();
@@ -255,7 +245,6 @@ export function startRenderShort(
   let ffmpegArgs: string[] = [];
 
   if (sourceTakePath && fs.existsSync(sourceTakePath)) {
-    // Mode with real take rush: crop & scale to 9:16 vertical 1080x1920
     const filter = [
       `scale=1080:1920:force_original_aspect_ratio=increase`,
       `crop=1080:1920`,
@@ -279,7 +268,6 @@ export function startRenderShort(
       outputMp4
     ];
   } else {
-    // Faceless Explainer Mode: create 1080x1920 vertical motion canvas with colored background
     const filter = [
       `drawtext=text='${project.title.replace(/[':\\]/g, ' ')}':fontsize=52:fontcolor=white:box=1:boxcolor=0x18181bee:boxborderw=24:x=(w-text_w)/2:y=400`,
       `drawtext=text='Video Agent Studio VF':fontsize=36:fontcolor=0xFF6B00:x=(w-text_w)/2:y=520`
@@ -304,7 +292,6 @@ export function startRenderShort(
     ];
   }
 
-  // Spawn FFmpeg in background
   const proc = spawn('ffmpeg', ffmpegArgs);
   let stderrLog = '';
 
@@ -312,7 +299,6 @@ export function startRenderShort(
     const txt = chunk.toString();
     stderrLog += txt;
 
-    // Parse time= to update progress
     const match = txt.match(/time=(\d+):(\d+):(\d+\.\d+)/);
     if (match) {
       const hours = Number(match[1]);
@@ -342,7 +328,6 @@ export function startRenderShort(
       job.completedAt = new Date().toISOString();
       job.log = 'Rendu terminé avec succès par FFmpeg.';
 
-      // Update project version status
       const existingVer = project.versions.find(v => v.version === version);
       if (existingVer) {
         existingVer.status = 'done';

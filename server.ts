@@ -39,13 +39,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Initialize real persistent disk storage
 initStorage();
 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
-// Global CORS Middleware for ChatGPT Actions and MCP clients
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -56,12 +54,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Real Video & Media Static Serving (Range requests enabled for smooth playback)
 app.use('/takes', express.static(TAKES_DIR));
 app.use('/renders', express.static(RENDERS_DIR));
 app.use('/storage', express.static(STORAGE_DIR));
 
-// Initial Sample Projects
 const initialMotionComponents: Record<string, MotionComponent> = {
   'comp-rocket': {
     id: 'comp-rocket',
@@ -431,14 +427,10 @@ const sampleProjects: ShortProject[] = [
     }
   }
 ];
-// Seed default projects to persistent disk storage if not already initialized
 if (getAllProjects().length === 0) {
   sampleProjects.forEach(p => saveProject(p));
 }
 
-// -------------------------------------------------------------
-// MCP TOOL DEFINITIONS (The 15 Commands from the documentation)
-// -------------------------------------------------------------
 const MCP_TOOLS = [
   {
     name: 'studio_status',
@@ -725,7 +717,6 @@ const MCP_TOOLS = [
   }
 ];
 
-// Helper to execute any tool with Real Disk Storage & Real FFmpeg Processing
 async function executeToolCall(toolName: string, args: any) {
   switch (toolName) {
     case 'studio_status': {
@@ -987,7 +978,6 @@ async function executeToolCall(toolName: string, args: any) {
       const nextNum = (proj.versions || []).length + 1;
       const nextV = args.version || `v${nextNum}`;
 
-      // Start REAL FFmpeg render process
       const job = startRenderShort(proj, nextV, { quality: args.quality, fps: args.fps });
 
       return {
@@ -1209,9 +1199,6 @@ async function executeToolCall(toolName: string, args: any) {
   }
 }
 
-// -------------------------------------------------------------
-// MCP JSON-RPC 2.0 PROTOCOL ENDPOINT (For ChatGPT MCP, Claude, etc.)
-// -------------------------------------------------------------
 app.post(['/api/mcp', '/mcp'], async (req: Request, res: Response) => {
   const { jsonrpc, id, method, params } = req.body;
 
@@ -1285,7 +1272,6 @@ app.post(['/api/mcp', '/mcp'], async (req: Request, res: Response) => {
     }
   }
 
-  // Ping
   if (method === 'ping') {
     return res.json({ jsonrpc: '2.0', id, result: {} });
   }
@@ -1300,7 +1286,6 @@ app.post(['/api/mcp', '/mcp'], async (req: Request, res: Response) => {
   });
 });
 
-// SSE endpoint for standard MCP streaming clients
 app.get(['/api/mcp/sse', '/mcp/sse', '/sse'], (req: Request, res: Response) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -1321,10 +1306,6 @@ app.post(['/api/mcp/messages', '/mcp/messages', '/messages'], (req: Request, res
   return res.json({ status: 'ok' });
 });
 
-// -------------------------------------------------------------
-// OPENAPI 3.1 SCHEMA FOR CHATGPT CUSTOM GPT ACTIONS
-// (User can paste this URL into ChatGPT Custom GPT Actions to connect immediately!)
-// -------------------------------------------------------------
 app.get(['/api/openapi.json', '/openapi.json', '/.well-known/openapi.json'], (req: Request, res: Response) => {
   const host = req.get('host') || 'localhost:3000';
   const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
@@ -1854,9 +1835,6 @@ app.get(['/api/openapi.json', '/openapi.json', '/.well-known/openapi.json'], (re
   return res.json(openApiSpec);
 });
 
-// -------------------------------------------------------------
-// DIRECT REST API ENDPOINTS (For Frontend & ChatGPT Actions)
-// -------------------------------------------------------------
 app.get('/api/studio/status', async (req: Request, res: Response) => {
   return res.json(await executeToolCall('studio_status', {}));
 });
@@ -1923,7 +1901,7 @@ app.post('/api/studio/projects', async (req: Request, res: Response) => {
 app.put('/api/studio/projects/:id', (req: Request, res: Response) => {
   const proj = getProject(req.params.id);
   if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
-  
+
   if (req.body.title) proj.title = req.body.title;
   if (req.body.speakerVideoUrl) proj.speakerVideoUrl = req.body.speakerVideoUrl;
   if (req.body.sourceVideoName) proj.sourceVideoName = req.body.sourceVideoName;
@@ -2001,7 +1979,6 @@ app.post('/api/studio/styles', async (req: Request, res: Response) => {
   return res.json(result);
 });
 
-// Feedback Management
 app.get('/api/studio/projects/:id/feedbacks', (req: Request, res: Response) => {
   const proj = getProject(req.params.id);
   if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
@@ -2058,7 +2035,6 @@ app.delete('/api/studio/projects/:id/feedbacks/:fId', (req: Request, res: Respon
   return res.json({ success: true, message: 'Feedback supprimé' });
 });
 
-// Cut / Uncut word in transcript
 app.patch('/api/studio/projects/:id/words/:wId/cut', (req: Request, res: Response) => {
   const proj = getProject(req.params.id);
   if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
@@ -2071,7 +2047,6 @@ app.patch('/api/studio/projects/:id/words/:wId/cut', (req: Request, res: Respons
   return res.json({ success: true, word });
 });
 
-// Format LLM Prompt from Feedbacks (Ready to copy for Claude Code / ChatGPT)
 app.get('/api/studio/projects/:id/copy-prompt', (req: Request, res: Response) => {
   const proj = getProject(req.params.id);
   if (!proj) return res.status(404).json({ error: 'Projet introuvable' });
@@ -2117,7 +2092,6 @@ app.get('/api/studio/projects/:id/copy-prompt', (req: Request, res: Response) =>
   });
 });
 
-// Direct test executor for testing any of the 23 MCP commands from UI
 app.post('/api/studio/execute-tool', async (req: Request, res: Response) => {
   const { toolName, args } = req.body;
   try {
@@ -2128,7 +2102,6 @@ app.post('/api/studio/execute-tool', async (req: Request, res: Response) => {
   }
 });
 
-// Setup Vite or static serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

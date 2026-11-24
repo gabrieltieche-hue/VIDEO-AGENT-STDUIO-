@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Root storage paths
 export const ROOT_DIR = path.resolve(__dirname, '../../');
 export const STORAGE_DIR = path.resolve(ROOT_DIR, 'storage');
 export const TAKES_DIR = path.join(STORAGE_DIR, 'takes');
@@ -130,7 +129,6 @@ export interface SourceVideo {
   path?: string;
 }
 
-// Initialize all storage directories
 export function initStorage() {
   const dirs = [STORAGE_DIR, TAKES_DIR, RENDERS_DIR, PROJECTS_DIR, COMPONENTS_DIR, JOBS_DIR, STYLES_DIR];
   for (const dir of dirs) {
@@ -140,7 +138,6 @@ export function initStorage() {
   }
 }
 
-// Save project to disk
 export function saveProject(project: ShortProject) {
   const projectDir = path.join(PROJECTS_DIR, project.id);
   if (!fs.existsSync(projectDir)) {
@@ -163,13 +160,11 @@ export function saveProject(project: ShortProject) {
   }
 }
 
-// Read project from disk
 export function getProject(idOrSlug: string): ShortProject | null {
   const all = getAllProjects();
   return all.find(p => p.id === idOrSlug || p.slug === idOrSlug) || null;
 }
 
-// Get all projects from disk
 export function getAllProjects(): ShortProject[] {
   if (!fs.existsSync(PROJECTS_DIR)) return [];
   const entries = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true });
@@ -183,7 +178,6 @@ export function getAllProjects(): ShortProject[] {
           const raw = fs.readFileSync(pFile, 'utf-8');
           const p = JSON.parse(raw);
 
-          // Merge separate files if present
           const fbFile = path.join(PROJECTS_DIR, entry.name, 'feedbacks.json');
           if (fs.existsSync(fbFile)) {
             p.feedbacks = JSON.parse(fs.readFileSync(fbFile, 'utf-8'));
@@ -210,7 +204,6 @@ export function getAllProjects(): ShortProject[] {
   return projects;
 }
 
-// Delete project from disk
 export function deleteProject(idOrSlug: string): boolean {
   const p = getProject(idOrSlug);
   if (!p) return false;
